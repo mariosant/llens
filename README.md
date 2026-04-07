@@ -41,36 +41,33 @@ bun run src/cli.ts run my-test.llens.yml
 
 ## Configuration
 
+Uses [c12](https://github.com/unjs/c12) for smart configuration loading.
+
 Configuration is loaded in this priority order (highest first):
 
 1. CLI arguments (`--model`, `--timeout`)
 2. Environment variables (`LLENS_API_KEY`, `LLENS_MODEL`, etc.)
-3. Test file `config` section
-4. Config file (`.llensrc`, `llens.config.yml`, etc.)
-5. Defaults
+3. Config file (`llens.config.yml`, `.llensrc.yml`, etc.)
+4. Defaults
 
 ### Config File
 
-Create `.llensrc.yml` in your project root:
+Create `llens.config.yml` in your project root:
 
 ```yaml
 model: gpt-4
 temperature: 0.7
 timeout: 30000
-apiKey: ${OPENAI_API_KEY}  # or set via LLENS_API_KEY env var
+apiKey: ${OPENAI_API_KEY} # or set via LLENS_API_KEY env var
 baseUrl: https://api.openai.com/v1
 ```
 
-Supported formats: YAML, JSON, TOML
+Supported formats: YAML, JSON, TOML, JSON5
 
-**Config file search order:**
-- `.llensrc` (YAML)
-- `.llensrc.yml` / `.llensrc.yaml`
-- `.llensrc.json`
-- `.llensrc.toml`
-- `llens.config.yml` / `llens.config.yaml`
-- `llens.config.json`
-- `llens.config.toml`
+**Config file search order (c12):**
+
+- `llens.config.yml` / `llens.config.yaml` / `llens.config.json` / `llens.config.toml`
+- `.llensrc.yml` / `.llensrc.yaml` / `.llensrc.json` / `.llensrc.toml`
 
 ### Environment Variables
 
@@ -79,6 +76,8 @@ Supported formats: YAML, JSON, TOML
 - `LLENS_BASE_URL` - API base URL
 - `LLENS_TEMPERATURE` - Temperature setting
 - `LLENS_TIMEOUT` - Request timeout in milliseconds
+
+c12 also supports loading `.env` files automatically.
 
 ## Test File Format
 
@@ -97,7 +96,7 @@ config:
 tests:
   - name: "Test name"
     query: "Your prompt to the LLM"
-    config:  # Optional: per-test config
+    config: # Optional: per-test config
       model: gpt-3.5-turbo
     expect:
       - type: contains

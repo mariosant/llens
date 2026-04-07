@@ -42,26 +42,32 @@ src/
 #### CLI (`src/cli.ts`)
 
 Uses [citty](https://github.com/unjs/citty) for command-line interface. Three subcommands:
+
 - `run` (default) - Execute test files
 - `init` - Create sample test files
 - `validate` - Check test file syntax
 
 #### Configuration System (`src/core/config.ts`)
 
+Uses [c12](https://github.com/unjs/c12) for smart configuration loading.
+
 Config merging priority (highest to lowest):
+
 1. CLI arguments
 2. Environment variables
-3. Test file `config` section
-4. Config file (`.llensrc`, `llens.config.yml`, etc.)
-5. Default values
+3. Config file (`llens.config.yml`, `.llensrc.yml`, etc.)
+4. Default values
 
 Key functions:
-- `loadConfig(cwd, cliOverrides)` - Load and merge all config sources
+
+- `loadConfig(cwd, cliOverrides)` - Load and merge all config sources using c12
 - `mergeConfigs()` - Merge multiple config levels
+- `loadFromEnv()` - Load environment variables
 
 #### Test Runner (`src/core/runner.ts`)
 
 The `TestRunner` class orchestrates test execution:
+
 - Merges config for each test
 - Creates LLM client instances
 - Runs tests sequentially
@@ -70,6 +76,7 @@ The `TestRunner` class orchestrates test execution:
 #### LLM Client (`src/core/llm-client.ts`)
 
 OpenAI-compatible API client:
+
 - Sends chat completion requests
 - Supports `response_format` for JSON mode
 - Returns content + token usage
@@ -78,18 +85,19 @@ OpenAI-compatible API client:
 
 Six assertion types supported:
 
-| Assertion | Description | Parameters |
-|-----------|-------------|------------|
-| `contains` | Check if response contains substring | `value: string` |
-| `matches` | Regex pattern matching | `pattern: string` |
-| `json` | Validate response is valid JSON | none |
-| `schema` | Validate JSON against Zod schema | `schema: object` |
-| `cost` | Check token usage limits | `maxTokens?: number` |
-| `latency` | Check response time | `maxMs: number` |
+| Assertion  | Description                          | Parameters           |
+| ---------- | ------------------------------------ | -------------------- |
+| `contains` | Check if response contains substring | `value: string`      |
+| `matches`  | Regex pattern matching               | `pattern: string`    |
+| `json`     | Validate response is valid JSON      | none                 |
+| `schema`   | Validate JSON against Zod schema     | `schema: object`     |
+| `cost`     | Check token usage limits             | `maxTokens?: number` |
+| `latency`  | Check response time                  | `maxMs: number`      |
 
 #### Parser (`src/utils/parser.ts`)
 
 Supports multiple formats via [confbox](https://github.com/unjs/confbox):
+
 - `.llens.yml` / `.llens.yaml` - YAML
 - `.llens.json` - JSON
 - `.llens.toml` - TOML
@@ -100,6 +108,7 @@ Supports multiple formats via [confbox](https://github.com/unjs/confbox):
 All types are defined in `src/types/index.ts` using Zod schemas for runtime validation.
 
 Key types:
+
 ```typescript
 // Runtime configuration (fully resolved)
 interface RuntimeConfig {
@@ -158,11 +167,13 @@ bun run test:watch
 ### Project Configuration
 
 **package.json**:
+
 - `type: "module"` - ES modules
 - `bin.llens` - CLI entry point
 - Scripts: `dev`, `test`, `test:watch`
 
 **tsconfig.json**:
+
 - Target: ESNext
 - Module: Preserve (for Bun compatibility)
 - Strict mode enabled
@@ -171,15 +182,19 @@ bun run test:watch
 ### Dependencies
 
 **Runtime:**
+
+- `c12` - Smart configuration loader
 - `citty` - CLI framework for building commands
 - `confbox` - Multi-format config file parser (YAML, JSON, TOML)
 - `picocolors` - Terminal color output
 - `zod` - Runtime validation and type inference
 
 **Development:**
+
 - `@types/bun` - Bun type definitions
 
 **Peer:**
+
 - `typescript` ^5
 
 ### Environment Variables
@@ -234,6 +249,7 @@ export type MyType = z.infer<typeof MySchema>;
 ### CLI Commands
 
 Each command in `src/commands/` should:
+
 1. Use `defineCommand()` from citty
 2. Export default command object
 3. Handle args and provide meta information
@@ -261,6 +277,7 @@ test("description", () => {
 4. **Test CLI commands** - Use child processes or direct function calls
 
 Example test structure:
+
 ```typescript
 import { test, expect } from "bun:test";
 import { evaluateAssertion } from "./assertions";
@@ -269,7 +286,11 @@ const mockResponse = (content: string) => ({ content });
 
 test("contains assertion passes", () => {
   const response = mockResponse("Hello world");
-  const result = evaluateAssertion(response, { type: "contains", value: "Hello" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "contains", value: "Hello" },
+    100,
+  );
   expect(result.pass).toBe(true);
 });
 ```
@@ -294,13 +315,22 @@ bun test --coverage
 
 ### Config File Search Order
 
-1. `.llensrc` (YAML)
-2. `.llensrc.yml` / `.llensrc.yaml`
-3. `.llensrc.json`
-4. `.llensrc.toml`
-5. `llens.config.yml` / `llens.config.yaml`
-6. `llens.config.json`
-7. `llens.config.toml`
+c12 searches for configuration files in the following order:
+
+1. `llens.config.yml` / `llens.config.yaml` / `llens.config.json` / `llens.config.toml`
+2. `.llensrc.yml` / `.llensrc.yaml` / `.llensrc.json` / `.llensrc.toml`
+3. Environment variables (LLENS\_\*)
+4. Default values
+
+### Environment Variables
+
+- `LLENS_API_KEY` - API key for LLM provider (required)
+- `LLENS_MODEL` - Default model (default: "gpt-4")
+- `LLENS_BASE_URL` - API base URL (default: "https://api.openai.com/v1")
+- `LLENS_TEMPERATURE` - Temperature setting (default: 0.7)
+- `LLENS_TIMEOUT` - Request timeout in ms (default: 30000)
+
+c12 also supports loading `.env` files automatically.
 
 ### Test File Format
 
@@ -315,7 +345,7 @@ config:
 tests:
   - name: "Test Name"
     query: "Prompt to LLM"
-    config:  # Optional per-test config
+    config: # Optional per-test config
       model: gpt-3.5-turbo
     expect:
       - type: contains
@@ -374,6 +404,7 @@ llens validate my-test.llens.yml
 ### Adding a New Assertion Type
 
 1. Add schema to `src/types/index.ts`:
+
 ```typescript
 export const CustomAssertionSchema = z.object({
   type: z.literal("custom"),
@@ -387,10 +418,11 @@ export const AssertionSchema = z.union([
 ```
 
 2. Add evaluator to `src/core/assertions.ts`:
+
 ```typescript
 function evaluateCustom(
   response: LLMResponse,
-  assertion: CustomAssertion
+  assertion: CustomAssertion,
 ): AssertionResult {
   // Implementation
   return { pass: true, message: "" };
@@ -528,14 +560,19 @@ This project follows a strict functional programming style. All code must adhere
 ### Core Principles
 
 1. **No Classes** - Use factory functions and closures instead of classes
+
    ```typescript
    // ❌ Don't use classes
    class MyClass {
      private value: number;
-     constructor(v: number) { this.value = v; }
-     getValue() { return this.value; }
+     constructor(v: number) {
+       this.value = v;
+     }
+     getValue() {
+       return this.value;
+     }
    }
-   
+
    // ✅ Use factory functions
    const createMyThing = (value: number) => ({
      getValue: () => value,
@@ -543,40 +580,43 @@ This project follows a strict functional programming style. All code must adhere
    ```
 
 2. **No Mutable Variables** - Use `const` only, never `let` or `var`
+
    ```typescript
    // ❌ Don't use let
    let count = 0;
    for (const item of items) {
      count += 1;
    }
-   
+
    // ✅ Use const with reduce
    const count = items.reduce((acc) => acc + 1, 0);
    ```
 
 3. **No Loops** - Use array methods instead of `for`, `while`, `for...of`
+
    ```typescript
    // ❌ Don't use loops
    const results = [];
    for (const item of items) {
      results.push(transform(item));
    }
-   
+
    // ✅ Use map
    const results = items.map(transform);
    ```
 
 4. **No Try/Catch** - Use the `Result<T, E>` type for error handling
+
    ```typescript
    import { ok, err, tryAsync, type Result } from "./utils/result";
-   
+
    // ❌ Don't throw
    async function fetchData(): Promise<Data> {
      const response = await fetch(url);
      if (!response.ok) throw new Error("Failed");
      return response.json();
    }
-   
+
    // ✅ Return Result type
    async function fetchData(): Promise<Result<Data, Error>> {
      const responseResult = await tryAsync(() => fetch(url));
@@ -587,6 +627,7 @@ This project follows a strict functional programming style. All code must adhere
    ```
 
 5. **No Nested Conditionals** - Use early returns, lookup objects, or pattern matching
+
    ```typescript
    // ❌ Avoid nested if/else
    if (conditionA) {
@@ -598,12 +639,12 @@ This project follows a strict functional programming style. All code must adhere
    } else {
      return value3;
    }
-   
+
    // ✅ Use early returns
    if (!conditionA) return value3;
    if (!conditionB) return value2;
    return value1;
-   
+
    // ✅ Or use lookup objects
    const handlers: Record<Type, () => Result> = {
      typeA: handleA,
@@ -617,6 +658,7 @@ This project follows a strict functional programming style. All code must adhere
 The project provides utilities in `src/utils/result.ts` and `src/utils/functional.ts`:
 
 #### Result Type (Either Monad)
+
 ```typescript
 import { ok, err, isOk, isErr, map, flatMap, unwrapOr } from "./utils/result";
 
@@ -633,8 +675,14 @@ const value = unwrapOr(defaultValue)(result);
 ```
 
 #### Array Utilities (Point-free Style)
+
 ```typescript
-import { mapArray, filterArray, reduceArray, traverse } from "./utils/functional";
+import {
+  mapArray,
+  filterArray,
+  reduceArray,
+  traverse,
+} from "./utils/functional";
 
 // All utilities are curried for composition
 const double = mapArray((x: number) => x * 2);
@@ -655,12 +703,12 @@ import { ok, err, tryAsync, type Result } from "./utils/result";
 async function operation(): Promise<Result<Data, AppError>> {
   // Wrap operations that might throw
   const result = await tryAsync(() => fetchData());
-  
+
   // Handle error case early
   if (result.kind === "err") {
     return err({ kind: "app_error", message: result.error.message });
   }
-  
+
   // Continue with success
   const data = result.value;
   return ok(transform(data));
@@ -692,7 +740,7 @@ export const mergeConfigs = (
   configs.reduce(
     (merged, config) =>
       config ? ({ ...merged, ...config } as RuntimeConfig) : merged,
-    DEFAULT_CONFIG
+    DEFAULT_CONFIG,
   );
 ```
 

@@ -21,9 +21,28 @@ export const createPlainFormatter = (): Formatter => ({
   testPass: (name: string, result: TestResult) =>
     `  ${pc.green("✓")} ${name} ${pc.gray(`(${formatDuration(result.duration)})`)}\n`,
 
-  testFail: (name: string, result: TestResult, error: AssertionError) =>
-    `  ${pc.red("✗")} ${name} ${pc.gray(`(${formatDuration(result.duration)})`)}\n` +
-    `    ${pc.red(error.message)}\n`,
+  testFail: (name: string, result: TestResult, error: AssertionError) => {
+    const lines = result.response.content.split("\n");
+    const preview = lines.slice(0, 3).join("\n");
+
+    if (!preview) {
+      return (
+        `  ${pc.red("✗")} ${name} ${pc.gray(`(${formatDuration(result.duration)})`)}\n` +
+        `    ${pc.red(error.message)}\n`
+      );
+    }
+
+    const responseOutput = preview
+      .split("\n")
+      .map((line) => `    > ${line}`)
+      .join("\n");
+
+    return (
+      `  ${pc.red("✗")} ${name} ${pc.gray(`(${formatDuration(result.duration)})`)}\n` +
+      `    ${pc.red(error.message)}\n\n` +
+      `${responseOutput}\n`
+    );
+  },
 
   suiteEnd: (_name: string, stats: TestStats) =>
     `\n  ${statusColor(stats.failed)} - ${stats.total} tests, ${stats.passed} passed, ${stats.failed} failed\n\n`,

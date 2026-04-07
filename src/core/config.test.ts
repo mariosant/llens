@@ -1,5 +1,11 @@
 import { test, expect, beforeEach, afterEach } from "bun:test";
-import { loadConfig, loadFromEnv, mergeConfigs, mergeTestConfig, findConfigFile, DEFAULT_CONFIG } from "./config";
+import {
+  loadConfig,
+  loadFromEnv,
+  mergeConfigs,
+  mergeTestConfig,
+  DEFAULT_CONFIG,
+} from "./config";
 import type { RuntimeConfig, ConfigFile, TestConfig } from "../types";
 import { isOk, unwrapOr } from "../utils/result";
 
@@ -84,7 +90,12 @@ test("mergeConfigs should prioritize CLI over everything", () => {
   const fileConfig: ConfigFile = { model: "gpt-3.5-turbo" };
   const testConfig: TestConfig = { model: "gpt-4-turbo" };
   const cliOverrides = { model: "gpt-4o" };
-  const merged = mergeConfigs(DEFAULT_CONFIG, fileConfig, testConfig, cliOverrides);
+  const merged = mergeConfigs(
+    DEFAULT_CONFIG,
+    fileConfig,
+    testConfig,
+    cliOverrides,
+  );
   expect(merged.model).toBe("gpt-4o");
 });
 
@@ -97,7 +108,7 @@ test("loadConfig should return defaults when no config file exists", async () =>
   }
 });
 
-test("loadConfig should load from .llensrc.yml", async () => {
+test("loadConfig should load from llens.config.yml", async () => {
   // Create a temporary config file
   const tmpDir = "/tmp/llens-test-config";
   await Bun.$`mkdir -p ${tmpDir}`;
@@ -106,8 +117,8 @@ model: gpt-3.5-turbo
 temperature: 0.5
 timeout: 45000
 `;
-  await Bun.write(`${tmpDir}/.llensrc.yml`, configContent);
-  
+  await Bun.write(`${tmpDir}/llens.config.yml`, configContent);
+
   const configResult = await loadConfig(tmpDir);
   expect(isOk(configResult)).toBe(true);
   if (isOk(configResult)) {
@@ -115,7 +126,7 @@ timeout: 45000
     expect(configResult.value.temperature).toBe(0.5);
     expect(configResult.value.timeout).toBe(45000);
   }
-  
+
   // Cleanup
   await Bun.$`rm -rf ${tmpDir}`;
 });
@@ -126,7 +137,7 @@ test("loadConfig should prefer environment variables", async () => {
   process.env.LLENS_BASE_URL = "https://env.example.com";
   process.env.LLENS_TEMPERATURE = "0.3";
   process.env.LLENS_TIMEOUT = "60000";
-  
+
   const configResult = await loadConfig("/nonexistent");
   expect(isOk(configResult)).toBe(true);
   if (isOk(configResult)) {
@@ -136,7 +147,7 @@ test("loadConfig should prefer environment variables", async () => {
     expect(configResult.value.temperature).toBe(0.3);
     expect(configResult.value.timeout).toBe(60000);
   }
-  
+
   // Cleanup
   delete process.env.LLENS_MODEL;
   delete process.env.LLENS_API_KEY;
@@ -148,17 +159,20 @@ test("loadConfig should prefer environment variables", async () => {
 test("loadConfig environment variables override file config", async () => {
   const tmpDir = "/tmp/llens-test-env";
   await Bun.$`mkdir -p ${tmpDir}`;
-  await Bun.write(`${tmpDir}/.llensrc.yml`, "model: file-model\napiKey: file-key");
-  
+  await Bun.write(
+    `${tmpDir}/llens.config.yml`,
+    "model: file-model\napiKey: file-key",
+  );
+
   process.env.LLENS_MODEL = "env-model";
-  
+
   const configResult = await loadConfig(tmpDir);
   expect(isOk(configResult)).toBe(true);
   if (isOk(configResult)) {
     expect(configResult.value.model).toBe("env-model"); // from env
     expect(configResult.value.apiKey).toBe("file-key"); // from file
   }
-  
+
   // Cleanup
   delete process.env.LLENS_MODEL;
   await Bun.$`rm -rf ${tmpDir}`;
