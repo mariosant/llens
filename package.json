@@ -1,0 +1,28 @@
+{
+  "name": "llens",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "version": "0.1.0",
+  "description": "LLM Quality Assurance Test Runner",
+  "bin": {
+    "llens": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun --hot ./src/cli.ts",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "citty": "^0.2.2",
+    "confbox": "^0.2.4",
+    "picocolors": "^1.1.1",
+    "zod": "^4.3.6"
+  }
+}
