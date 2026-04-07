@@ -2,10 +2,63 @@ import { defineCommand } from "citty";
 import { glob } from "../utils/glob";
 import { parseFile } from "../utils/parser";
 import { loadConfig } from "../core/config";
-import { TestRunner } from "../core/runner";
-import { PlainFormatter } from "../formatters/plain";
+import { runTestFile } from "../core/runner";
+import { createPlainFormatter } from "../formatters/plain";
 import { TestFileSchema } from "../types";
-import path from "path";
+import { ok, err, type Result } from "../utils/result";
+import type { RuntimeConfig, TestFile, TestStats } from "../types";
+
+// CLI arguments type
+interface RunArgs {
+  readonly files?: string;
+  readonly model?: string;
+  readonly timeout?: string;
+}
+
+// Parse CLI overrides
+const parseCliOverrides = (args: RunArgs): Partial<RuntimeConfig> => {
+  const overrides: Partial<RuntimeConfig> = {};
+  
+  if (args.model) Object.assign(overrides, { model: args.model });
+  if (args.timeout) Object.assign(overrides, { timeout: parseInt(args.timeout, 10) });
+  
+  return overrides;
+};
+
+// Default glob pattern
+const DEFAULT_PATTERN = "**/*.llens.{yml,yaml,json,toml,json5}";
+
+// Resolve file pattern
+const resolvePattern = (files?: string): string =>
+  files ?? DEFAULT_PATTERN;
+
+// Load and parse a test file
+const loadTestFile = async (filePath: string): Promise<Result<TestFile, string>> => {
+  const content = await Bun.file(filePath).text();
+  const parseResult = parseFile(content, filePath);
+  
+  if (parseResult.kind === "err") {
+    return err(parseResult.error.message);
+  }
+  
+  const validationResult = TestFileSchema.safeParse(parseResult.value);
+  
+  return validationResult.success
+    ? ok(validationResult.data)
+    : err(validationResult.error.issues.map((e: { message: string }) => e.message).join(", "));
+};
+
+// Aggregate stats
+const aggregateStats = (statsArray: readonly TestStats[]): TestStats =>
+  statsArray.reduce(
+    (acc, stats) => ({
+      total: acc.total + stats.total,
+      passed: acc.passed + stats.passed,
+      failed: acc.failed + stats.failed,
+      duration: acc.duration + stats.duration,
+    }),
+    { total: 0, passed: 0, failed: 0, duration: 0 }
+  );
 
 export default defineCommand({
   meta: {
@@ -29,59 +82,50 @@ export default defineCommand({
   },
   async run({ args }) {
     const cwd = process.cwd();
-    const cliOverrides: Record<string, string | number> = {};
+    const cliOverrides = parseCliOverrides(args);
     
-    if (args.model) cliOverrides.model = args.model;
-    if (args.timeout) cliOverrides.timeout = parseInt(args.timeout, 10);
+    const configResult = await loadConfig(cwd, cliOverrides);
     
-    const config = await loadConfig(cwd, cliOverrides as any);
+    if (configResult.kind === "err") {
+      console.error(`Error: ${configResult.error.message}`);
+      process.exit(1);
+    }
+    
+    const config = configResult.value;
     
     if (!config.apiKey) {
       console.error("Error: No API key provided. Set LLENS_API_KEY environment variable or add apiKey to config.");
       process.exit(1);
     }
     
-    // Find test files
-    const testFiles = args.files 
-      ? await glob(args.files)
-      : await glob("**/*.llens.{yml,yaml,json,toml,json5}");
+    const pattern = resolvePattern(args.files);
+    const testFiles = await glob(pattern);
     
     if (testFiles.length === 0) {
       console.error("No test files found.");
       process.exit(1);
     }
     
-    const formatter = new PlainFormatter();
-    const runner = new TestRunner(config, formatter);
+    const formatter = createPlainFormatter();
     
-    formatter.start();
-    
-    let totalStats = {
-      total: 0,
-      passed: 0,
-      failed: 0,
-      duration: 0,
-    };
+    const allStats: TestStats[] = [];
     
     for (const filePath of testFiles) {
-      try {
-        const content = await Bun.file(filePath).text();
-        const parsed = parseFile(content, filePath);
-        const testFile = TestFileSchema.parse(parsed);
-        const stats = await runner.runTestFile(testFile, filePath);
-        
-        totalStats.total += stats.total;
-        totalStats.passed += stats.passed;
-        totalStats.failed += stats.failed;
-        totalStats.duration += stats.duration;
-      } catch (error) {
-        console.error(`Error running ${filePath}:`, error instanceof Error ? error.message : String(error));
+      const testFileResult = await loadTestFile(filePath);
+      
+      if (testFileResult.kind === "err") {
+        console.error(`Error loading ${filePath}: ${testFileResult.error}`);
         process.exit(1);
       }
+      
+      const stats = await runTestFile(config, formatter, testFileResult.value, filePath);
+      allStats.push(stats);
     }
     
-    formatter.summary(totalStats);
-    formatter.end();
+    const totalStats = aggregateStats(allStats);
+    
+    process.stdout.write(formatter.summary(totalStats));
+    process.stdout.write(formatter.end());
     
     process.exit(totalStats.failed > 0 ? 1 : 0);
   },

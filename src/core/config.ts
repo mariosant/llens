@@ -1,8 +1,10 @@
-import { parseFile, detectFormat } from "../utils/parser";
 import { parseYAML, parseJSON, parseTOML } from "confbox";
-import type { RuntimeConfig, ConfigFile, TestConfig } from "../types";
+import { ok, err, tryAsync, trySync, unwrapOr, type Result } from "../utils/result";
+import { mapArray, findArray, reduceArray } from "../utils/functional";
+import type { RuntimeConfig, ConfigFile, TestConfig, ConfigError } from "../types";
 
-const DEFAULT_CONFIG: RuntimeConfig = {
+// Default configuration (immutable)
+export const DEFAULT_CONFIG: RuntimeConfig = {
   model: "gpt-4",
   temperature: 0.7,
   timeout: 30000,
@@ -10,117 +12,125 @@ const DEFAULT_CONFIG: RuntimeConfig = {
   baseUrl: "https://api.openai.com/v1",
 };
 
-export function getDefaultConfig(): RuntimeConfig {
-  return { ...DEFAULT_CONFIG };
-}
+// Config file search paths with formats
+const CONFIG_FILES: readonly { readonly name: string; readonly format: "yaml" | "json" | "toml" }[] = [
+  { name: ".llensrc", format: "yaml" },
+  { name: ".llensrc.yml", format: "yaml" },
+  { name: ".llensrc.yaml", format: "yaml" },
+  { name: ".llensrc.json", format: "json" },
+  { name: ".llensrc.toml", format: "toml" },
+  { name: "llens.config.yml", format: "yaml" },
+  { name: "llens.config.yaml", format: "yaml" },
+  { name: "llens.config.json", format: "json" },
+  { name: "llens.config.toml", format: "toml" },
+];
 
-export function mergeConfigs(
-  defaults: RuntimeConfig,
-  fileConfig?: ConfigFile,
-  testConfig?: TestConfig,
-  cliOverrides?: Partial<RuntimeConfig>
-): RuntimeConfig {
-  let merged: RuntimeConfig = { ...defaults };
+// Parser lookup
+const PARSERS = {
+  yaml: parseYAML,
+  json: parseJSON,
+  toml: parseTOML,
+};
 
-  // Apply file config
-  if (fileConfig) {
-    if (fileConfig.model !== undefined) merged.model = fileConfig.model;
-    if (fileConfig.temperature !== undefined)
-      merged.temperature = fileConfig.temperature;
-    if (fileConfig.timeout !== undefined) merged.timeout = fileConfig.timeout;
-    if (fileConfig.apiKey !== undefined) merged.apiKey = fileConfig.apiKey;
-    if (fileConfig.baseUrl !== undefined) merged.baseUrl = fileConfig.baseUrl;
-  }
+// Single config file loader
+const loadConfigFile = async (
+  dir: string,
+  configFile: { name: string; format: keyof typeof PARSERS }
+): Promise<Result<ConfigFile | null, ConfigError>> => {
+  const path = `${dir}/${configFile.name}`;
+  const file = Bun.file(path);
+  const exists = await file.exists();
+  
+  if (!exists) return ok(null);
+  
+  const content = await file.text();
+  const parse = PARSERS[configFile.format];
+  const result = trySync(() => parse(content) as ConfigFile);
+  
+  return result.kind === "ok"
+    ? ok(result.value)
+    : err({ kind: "config_error", message: `Failed to parse ${configFile.name}: ${result.error.message}` });
+};
 
-  // Apply test config
-  if (testConfig) {
-    if (testConfig.model !== undefined) merged.model = testConfig.model;
-    if (testConfig.temperature !== undefined)
-      merged.temperature = testConfig.temperature;
-    if (testConfig.timeout !== undefined) merged.timeout = testConfig.timeout;
-    if (testConfig.response_format !== undefined)
-      merged.response_format = testConfig.response_format;
-  }
+// Find and load first existing config file
+export const findConfigFile = async (dir: string): Promise<Result<ConfigFile | null, ConfigError>> => {
+  const tryLoad = async (
+    index: number
+  ): Promise<Result<ConfigFile | null, ConfigError>> => {
+    if (index >= CONFIG_FILES.length) return ok(null);
+    
+    const result = await loadConfigFile(dir, CONFIG_FILES[index]!);
+    
+    if (result.kind === "err") return result;
+    if (result.value !== null) return ok(result.value);
+    
+    return tryLoad(index + 1);
+  };
+  
+  return tryLoad(0);
+};
 
-  // Apply CLI overrides (highest priority)
-  if (cliOverrides) {
-    if (cliOverrides.model !== undefined) merged.model = cliOverrides.model;
-    if (cliOverrides.temperature !== undefined)
-      merged.temperature = cliOverrides.temperature;
-    if (cliOverrides.timeout !== undefined) merged.timeout = cliOverrides.timeout;
-    if (cliOverrides.apiKey !== undefined) merged.apiKey = cliOverrides.apiKey;
-    if (cliOverrides.baseUrl !== undefined) merged.baseUrl = cliOverrides.baseUrl;
-    if (cliOverrides.response_format !== undefined)
-      merged.response_format = cliOverrides.response_format;
-  }
+// Environment variable config loader
+const ENV_MAPPINGS: readonly { readonly env: string; readonly key: keyof RuntimeConfig; readonly transform?: (v: string) => string | number }[] = [
+  { env: "LLENS_MODEL", key: "model" },
+  { env: "LLENS_API_KEY", key: "apiKey" },
+  { env: "LLENS_BASE_URL", key: "baseUrl" },
+  { env: "LLENS_TEMPERATURE", key: "temperature", transform: parseFloat },
+  { env: "LLENS_TIMEOUT", key: "timeout", transform: (v) => parseInt(v, 10) },
+];
 
-  return merged;
-}
+export const loadFromEnv = (): Partial<RuntimeConfig> =>
+  ENV_MAPPINGS.reduce((acc, { env, key, transform }) => {
+    const value = process.env[env];
+    return value !== undefined
+      ? { ...acc, [key]: transform ? transform(value) : value }
+      : acc;
+  }, {} as Partial<RuntimeConfig>);
 
-async function loadConfigFile(dir: string): Promise<ConfigFile | null> {
-  const configFiles = [
-    { name: ".llensrc", format: "yaml" },
-    { name: ".llensrc.yml", format: "yaml" },
-    { name: ".llensrc.yaml", format: "yaml" },
-    { name: ".llensrc.json", format: "json" },
-    { name: ".llensrc.toml", format: "toml" },
-    { name: "llens.config.yml", format: "yaml" },
-    { name: "llens.config.yaml", format: "yaml" },
-    { name: "llens.config.json", format: "json" },
-    { name: "llens.config.toml", format: "toml" },
-  ];
+// Config merger - rightmost values take precedence
+export const mergeConfigs = (
+  ...configs: ReadonlyArray<Partial<RuntimeConfig> | undefined>
+): RuntimeConfig =>
+  configs.reduce<RuntimeConfig>(
+    (merged, config) =>
+      config ? { ...merged, ...config } : merged,
+    DEFAULT_CONFIG
+  );
 
-  for (const { name, format } of configFiles) {
-    const path = `${dir}/${name}`;
-    const file = Bun.file(path);
-    if (await file.exists()) {
-      const content = await file.text();
-      try {
-        switch (format) {
-          case "yaml":
-            return parseYAML(content) as ConfigFile;
-          case "json":
-            return parseJSON(content) as ConfigFile;
-          case "toml":
-            return parseTOML(content) as ConfigFile;
-        }
-      } catch (error) {
-        throw new Error(
-          `Failed to parse ${name}: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
-  }
-
-  return null;
-}
-
-function loadFromEnv(): Partial<RuntimeConfig> {
-  const env: Partial<RuntimeConfig> = {};
-
-  if (process.env.LLENS_MODEL) env.model = process.env.LLENS_MODEL;
-  if (process.env.LLENS_API_KEY) env.apiKey = process.env.LLENS_API_KEY;
-  if (process.env.LLENS_BASE_URL) env.baseUrl = process.env.LLENS_BASE_URL;
-  if (process.env.LLENS_TEMPERATURE)
-    env.temperature = parseFloat(process.env.LLENS_TEMPERATURE);
-  if (process.env.LLENS_TIMEOUT)
-    env.timeout = parseInt(process.env.LLENS_TIMEOUT, 10);
-
-  return env;
-}
-
-export async function loadConfig(
+// Main config loader
+export const loadConfig = async (
   cwd: string,
   cliOverrides?: Partial<RuntimeConfig>
-): Promise<RuntimeConfig> {
-  const defaults = getDefaultConfig();
-  const fileConfig = await loadConfigFile(cwd);
+): Promise<Result<RuntimeConfig, ConfigError>> => {
+  const fileResult = await findConfigFile(cwd);
+  
+  if (fileResult.kind === "err") return fileResult;
+  
+  const fileConfig = fileResult.value ?? undefined;
   const envConfig = loadFromEnv();
+  
+  // Merge: defaults -> file -> env -> cli
+  const config = mergeConfigs(
+    DEFAULT_CONFIG,
+    fileConfig,
+    envConfig,
+    cliOverrides
+  );
+  
+  return ok(config);
+};
 
-  // Merge: defaults -> file -> env -> CLI
-  let config = mergeConfigs(defaults, fileConfig ?? undefined);
-  config = mergeConfigs(config, undefined, undefined, envConfig);
-  config = mergeConfigs(config, undefined, undefined, cliOverrides);
-
-  return config;
-}
+// Test-specific config merger
+export const mergeTestConfig = (
+  baseConfig: RuntimeConfig,
+  testConfig?: TestConfig
+): RuntimeConfig =>
+  testConfig
+    ? {
+        ...baseConfig,
+        ...(testConfig.model && { model: testConfig.model }),
+        ...(testConfig.temperature !== undefined && { temperature: testConfig.temperature }),
+        ...(testConfig.timeout !== undefined && { timeout: testConfig.timeout }),
+        ...(testConfig.response_format && { response_format: testConfig.response_format }),
+      }
+    : baseConfig;

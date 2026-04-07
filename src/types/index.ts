@@ -1,4 +1,28 @@
 import { z } from "zod";
+import type { Result } from "../utils/result";
+
+// Error types
+export interface LLMError {
+  readonly kind: 'llm_error';
+  readonly message: string;
+  readonly status?: number;
+}
+
+export interface ParseError {
+  readonly kind: 'parse_error';
+  readonly message: string;
+  readonly filePath: string;
+}
+
+export interface ConfigError {
+  readonly kind: 'config_error';
+  readonly message: string;
+}
+
+export type AppError = LLMError | ParseError | ConfigError;
+
+// Async result alias
+export type AsyncResult<T, E = AppError> = Promise<Result<T, E>>;
 
 // Assertion schemas
 export const ContainsAssertionSchema = z.object({
@@ -87,68 +111,84 @@ export type ConfigFile = z.infer<typeof ConfigFileSchema>;
 
 // Runtime config (merged from all sources)
 export interface RuntimeConfig {
-  model: string;
-  temperature: number;
-  timeout: number;
-  apiKey: string;
-  baseUrl: string;
-  response_format?: Record<string, unknown>;
+  readonly model: string;
+  readonly temperature: number;
+  readonly timeout: number;
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly response_format?: Record<string, unknown>;
 }
 
 // LLM message format (OpenAI-compatible)
 export interface LLMMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  readonly role: "system" | "user" | "assistant";
+  readonly content: string;
 }
 
 // LLM request format
 export interface LLMRequest {
-  model: string;
-  messages: LLMMessage[];
-  temperature?: number;
-  response_format?: Record<string, unknown>;
+  readonly model: string;
+  readonly messages: LLMMessage[];
+  readonly temperature?: number;
+  readonly response_format?: Record<string, unknown>;
 }
 
 // LLM response format
 export interface LLMResponse {
-  content: string;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+  readonly content: string;
+  readonly usage?: {
+    readonly prompt_tokens: number;
+    readonly completion_tokens: number;
+    readonly total_tokens: number;
   };
 }
 
-// Test result
-export interface TestResult {
-  name: string;
-  passed: boolean;
-  duration: number;
-  response: LLMResponse;
-  error?: AssertionError;
-}
-
+// Assertion error
 export interface AssertionError {
-  assertion: Assertion;
-  message: string;
+  readonly assertion: Assertion;
+  readonly message: string;
 }
 
 // Test statistics
 export interface TestStats {
-  total: number;
-  passed: number;
-  failed: number;
-  duration: number;
+  readonly total: number;
+  readonly passed: number;
+  readonly failed: number;
+  readonly duration: number;
 }
 
-// Formatter interface
-export interface Formatter {
-  start(): void;
-  suiteStart(name: string): void;
-  testStart(name: string): void;
-  testPass(name: string, result: TestResult): void;
-  testFail(name: string, result: TestResult, error: AssertionError): void;
-  suiteEnd(name: string, stats: TestStats): void;
-  summary(stats: TestStats): void;
-  end(): void;
+// Formatter functions (pure, no side effects)
+export interface FormatterOutput {
+  readonly suiteStart: (name: string) => string;
+  readonly suiteEnd: (name: string, stats: TestStats) => string;
+  readonly testPass: (name: string, result: TestResult) => string;
+  readonly testFail: (name: string, result: TestResult, error: AssertionError) => string;
+  readonly testStart: (name: string) => string;
+  readonly summary: (stats: TestStats) => string;
+  readonly start: () => string;
+  readonly end: () => string;
+}
+
+// Old Formatter interface is deprecated - mark as such but keep for backward compat
+/** @deprecated Use FormatterOutput instead */
+export interface Formatter extends FormatterOutput {}
+
+// Test result (Result pattern)
+export type TestResult = 
+  | { readonly name: string; readonly passed: true; readonly duration: number; readonly response: LLMResponse }
+  | { readonly name: string; readonly passed: false; readonly duration: number; readonly response: LLMResponse; readonly error: AssertionError };
+
+// Configuration levels
+export type ConfigLevel = 'default' | 'file' | 'env' | 'test' | 'cli';
+
+// Runner state (immutable)
+export interface RunnerState {
+  readonly config: RuntimeConfig;
+  readonly formatter: FormatterOutput;
+}
+
+// Test execution result with stats
+export interface ExecutionResult {
+  readonly results: readonly TestResult[];
+  readonly stats: TestStats;
 }

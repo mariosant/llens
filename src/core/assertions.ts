@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { trySync, type Result } from "../utils/result";
+import { reduceArray } from "../utils/functional";
 import type {
   Assertion,
   LLMResponse,
@@ -8,218 +10,218 @@ import type {
   SchemaAssertion,
   CostAssertion,
   LatencyAssertion,
+  AssertionError,
 } from "../types";
 
 export interface AssertionResult {
-  pass: boolean;
-  message: string;
+  readonly pass: boolean;
+  readonly message: string;
 }
 
 export interface AllAssertionsResult {
-  pass: boolean;
-  errors: Array<{ assertion: Assertion; message: string }>;
+  readonly pass: boolean;
+  readonly errors: ReadonlyArray<AssertionError>;
 }
 
-export function evaluateAssertion(
-  response: LLMResponse,
-  assertion: Assertion,
-  latencyMs: number
-): AssertionResult {
-  switch (assertion.type) {
-    case "contains":
-      return evaluateContains(response, assertion);
-    case "matches":
-      return evaluateMatches(response, assertion);
-    case "json":
-      return evaluateJson(response, assertion);
-    case "schema":
-      return evaluateSchema(response, assertion);
-    case "cost":
-      return evaluateCost(response, assertion);
-    case "latency":
-      return evaluateLatency(response, assertion, latencyMs);
-    default:
-      return { pass: false, message: `Unknown assertion type` };
-  }
-}
-
-function evaluateContains(
+// Individual assertion evaluators - each returns Result
+const evaluateContains = (
   response: LLMResponse,
   assertion: ContainsAssertion
-): AssertionResult {
+): AssertionResult => {
   const pass = response.content.includes(assertion.value);
   return {
     pass,
-    message: pass
-      ? ""
-      : `Expected response to contain "${assertion.value}"`,
+    message: pass ? "" : `Expected response to contain "${assertion.value}"`,
   };
-}
+};
 
-function evaluateMatches(
+const evaluateMatches = (
   response: LLMResponse,
   assertion: MatchesAssertion
-): AssertionResult {
-  try {
-    // Check if pattern includes regex literal notation like /pattern/flags
-    let pattern = assertion.pattern;
-    let flags = "";
-    
-    if (pattern.startsWith("/")) {
-      const lastSlash = pattern.lastIndexOf("/");
-      if (lastSlash > 0) {
-        flags = pattern.slice(lastSlash + 1);
-        pattern = pattern.slice(1, lastSlash);
-      }
-    }
-    
-    const regex = new RegExp(pattern, flags);
-    const pass = regex.test(response.content);
-    return {
-      pass,
-      message: pass
-        ? ""
-        : `Expected response to match pattern "${assertion.pattern}"`,
-    };
-  } catch (error) {
-    return {
-      pass: false,
-      message: `Invalid regex pattern: ${assertion.pattern}`,
-    };
-  }
-}
+): AssertionResult => {
+  const patternResult = trySync(() => {
+    const pattern = assertion.pattern;
+    const hasSlashNotation = pattern.startsWith("/");
+    const lastSlash = hasSlashNotation ? pattern.lastIndexOf("/") : -1;
+    const hasFlags = hasSlashNotation && lastSlash > 0;
 
-function evaluateJson(
+    const normalizedPattern = hasFlags ? pattern.slice(1, lastSlash) : pattern;
+    const flags = hasFlags ? pattern.slice(lastSlash + 1) : "";
+
+    return new RegExp(normalizedPattern, flags);
+  });
+
+  return patternResult.kind === "err"
+    ? { pass: false, message: `Invalid regex pattern: ${assertion.pattern}` }
+    : (() => {
+        const pass = patternResult.value.test(response.content);
+        return {
+          pass,
+          message: pass ? "" : `Expected response to match pattern "${assertion.pattern}"`,
+        };
+      })();
+};
+
+const evaluateJson = (
   response: LLMResponse,
   _assertion: JsonAssertion
-): AssertionResult {
-  try {
-    JSON.parse(response.content);
-    return { pass: true, message: "" };
-  } catch (error) {
-    return {
-      pass: false,
-      message: `Response is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
+): AssertionResult => {
+  const result = trySync(() => JSON.parse(response.content));
 
-function evaluateSchema(
+  return result.kind === "ok"
+    ? { pass: true, message: "" }
+    : { pass: false, message: `Response is not valid JSON: ${result.error.message}` };
+};
+
+// Zod type mapping for schema properties
+const zodTypeMap: Record<string, () => z.ZodType> = {
+  string: () => z.string(),
+  number: () => z.number(),
+  boolean: () => z.boolean(),
+  array: () => z.array(z.unknown()),
+  object: () => z.record(z.string(), z.unknown()),
+};
+
+const evaluateSchema = (
   response: LLMResponse,
   assertion: SchemaAssertion
-): AssertionResult {
-  try {
-    const data = JSON.parse(response.content);
-    const schema = z.object(
-      Object.fromEntries(
-        Object.entries(assertion.schema.properties || {}).map(([key, value]) => {
-          const prop = value as { type: string };
-          switch (prop.type) {
-            case "string":
-              return [key, z.string()];
-            case "number":
-              return [key, z.number()];
-            case "boolean":
-              return [key, z.boolean()];
-            case "array":
-              return [key, z.array(z.unknown())];
-            case "object":
-              return [key, z.record(z.string(), z.unknown())];
-            default:
-              return [key, z.unknown()];
-          }
-        })
-      )
-    );
+): AssertionResult => {
+  const parseResult = trySync(() => JSON.parse(response.content));
 
-    // If required fields are specified, validate them
-    if (assertion.schema.required && Array.isArray(assertion.schema.required)) {
-      const requiredFields = assertion.schema.required as string[];
-      const requiredSchema = z.object(
-        Object.fromEntries(
-          requiredFields.map((field) => [field, schema.shape[field]])
-        )
+  if (parseResult.kind === "err") {
+    return { pass: false, message: `Invalid JSON: ${parseResult.error.message}` };
+  }
+
+  const data = parseResult.value;
+  const properties = assertion.schema.properties as Record<string, { type: string }> | undefined;
+
+  if (!properties) {
+    return { pass: true, message: "" };
+  }
+
+  const shapeEntries = Object.entries(properties).map(([key, value]) => {
+    const zodType = zodTypeMap[value.type];
+    return [key, zodType ? zodType() : z.unknown()] as const;
+  });
+
+  const shape = Object.fromEntries(shapeEntries);
+  const schema = z.object(shape);
+
+  const validationResult = trySync(() => {
+    const required = assertion.schema.required as string[] | undefined;
+    const hasRequired = required && required.length > 0;
+
+    if (hasRequired) {
+      const requiredShape = Object.fromEntries(
+        required!.map((field) => [field, shape[field]])
       );
-      requiredSchema.parse(data);
+      z.object(requiredShape).parse(data);
     } else {
       schema.parse(data);
     }
+    return undefined;
+  });
 
+  if (validationResult.kind === "ok") {
     return { pass: true, message: "" };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        pass: false,
-        message: `Schema validation failed: ${error.issues.map((e: z.ZodIssue) => e.message).join(", ")}`,
-      };
-    }
-    return {
-      pass: false,
-      message: `Invalid JSON or schema: ${error instanceof Error ? error.message : String(error)}`,
-    };
   }
-}
 
-function evaluateCost(
+  const error = validationResult.error;
+  const isZodError = error instanceof z.ZodError;
+  const message = isZodError
+    ? `Schema validation failed: ${error.issues.map((e: z.ZodIssue) => e.message).join(", ")}`
+    : `Schema validation failed: ${error.message}`;
+
+  return { pass: false, message };
+};
+
+const evaluateCost = (
   response: LLMResponse,
   assertion: CostAssertion
-): AssertionResult {
-  if (!response.usage) {
-    // If no usage data available and no strict limit, pass
-    if (!assertion.maxTokens && !assertion.maxCost) {
-      return { pass: true, message: "" };
-    }
-    return {
-      pass: false,
-      message: "No usage data available from LLM response",
-    };
+): AssertionResult => {
+  const hasUsage = response.usage !== undefined;
+  const noLimit = !assertion.maxTokens && !assertion.maxCost;
+
+  if (!hasUsage) {
+    return noLimit
+      ? { pass: true, message: "" }
+      : { pass: false, message: "No usage data available from LLM response" };
   }
 
-  if (assertion.maxTokens !== undefined) {
-    if (response.usage.total_tokens > assertion.maxTokens) {
-      return {
+  const overTokenLimit = assertion.maxTokens !== undefined &&
+    response.usage!.total_tokens > assertion.maxTokens;
+
+  return overTokenLimit
+    ? {
         pass: false,
-        message: `Token usage ${response.usage.total_tokens} exceeds limit ${assertion.maxTokens}`,
-      };
-    }
-  }
+        message: `Token usage ${response.usage!.total_tokens} exceeds limit ${assertion.maxTokens}`,
+      }
+    : { pass: true, message: "" };
+};
 
-  // Note: Cost calculation would require pricing info, which we don't have
-  // For now, we just check token limits
-
-  return { pass: true, message: "" };
-}
-
-function evaluateLatency(
+const evaluateLatency = (
   _response: LLMResponse,
   assertion: LatencyAssertion,
   latencyMs: number
-): AssertionResult {
-  if (latencyMs > assertion.maxMs) {
-    return {
-      pass: false,
-      message: `Response time ${latencyMs}ms exceeds limit ${assertion.maxMs}ms`,
-    };
-  }
-  return { pass: true, message: "" };
-}
+): AssertionResult => {
+  const overLimit = latencyMs > assertion.maxMs;
+  return overLimit
+    ? {
+        pass: false,
+        message: `Response time ${latencyMs}ms exceeds limit ${assertion.maxMs}ms`,
+      }
+    : { pass: true, message: "" };
+};
 
-export function evaluateAllAssertions(
+// Assertion evaluator lookup - replaces switch statement
+type AssertionEvaluator = (
   response: LLMResponse,
-  assertions: Assertion[],
+  assertion: Assertion,
   latencyMs: number
-): AllAssertionsResult {
-  const errors: Array<{ assertion: Assertion; message: string }> = [];
+) => AssertionResult;
 
-  for (const assertion of assertions) {
-    const result = evaluateAssertion(response, assertion, latencyMs);
-    if (!result.pass) {
-      errors.push({ assertion, message: result.message });
-    }
-  }
+const assertionEvaluators: Record<Assertion["type"], AssertionEvaluator> = {
+  contains: (response, assertion) => evaluateContains(response, assertion as ContainsAssertion),
+  matches: (response, assertion) => evaluateMatches(response, assertion as MatchesAssertion),
+  json: (response, assertion) => evaluateJson(response, assertion as JsonAssertion),
+  schema: (response, assertion) => evaluateSchema(response, assertion as SchemaAssertion),
+  cost: (response, assertion) => evaluateCost(response, assertion as CostAssertion),
+  latency: (response, assertion, latencyMs) =>
+    evaluateLatency(response, assertion as LatencyAssertion, latencyMs),
+};
 
-  return {
-    pass: errors.length === 0,
-    errors,
-  };
-}
+// Single assertion evaluation
+export const evaluateAssertion = (
+  response: LLMResponse,
+  assertion: Assertion,
+  latencyMs: number
+): AssertionResult => {
+  const evaluator = assertionEvaluators[assertion.type];
+  return evaluator
+    ? evaluator(response, assertion, latencyMs)
+    : { pass: false, message: "Unknown assertion type" };
+};
+
+// Collect errors from failed assertions using reduce
+const collectErrors = (
+  response: LLMResponse,
+  assertions: readonly Assertion[],
+  latencyMs: number
+): ReadonlyArray<AssertionError> =>
+  reduceArray<Assertion, AssertionError[]>(
+    (errors, assertion) => {
+      const result = evaluateAssertion(response, assertion, latencyMs);
+      return result.pass ? errors : [...errors, { assertion, message: result.message }];
+    },
+    []
+  )(assertions);
+
+// Evaluate all assertions
+export const evaluateAllAssertions = (
+  response: LLMResponse,
+  assertions: readonly Assertion[],
+  latencyMs: number
+): AllAssertionsResult => {
+  const errors = collectErrors(response, assertions, latencyMs);
+  return { pass: errors.length === 0, errors };
+};

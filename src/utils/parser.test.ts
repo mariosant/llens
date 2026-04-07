@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { parseFile, detectFormat } from "./parser";
+import { isOk, isErr } from "./result";
 import type { TestFile } from "../types";
 
 test("detectFormat should identify YAML files", () => {
@@ -42,12 +43,17 @@ tests:
       - type: contains
         value: world
 `;
-  const result = parseFile(yaml, "test.llens.yml") as TestFile;
-  expect(result.name).toBe("Test Suite");
-  expect(result.config?.model).toBe("gpt-4");
-  expect(result.tests).toHaveLength(1);
-  expect(result.tests[0].name).toBe("Test 1");
-  expect(result.tests[0].query).toBe("Hello");
+  const result = parseFile(yaml, "test.llens.yml");
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    const testFile = result.value as TestFile;
+    expect(testFile.name).toBe("Test Suite");
+    expect(testFile.config?.model).toBe("gpt-4");
+    expect(testFile.tests).toHaveLength(1);
+    const firstTest = testFile.tests[0];
+    expect(firstTest?.name).toBe("Test 1");
+    expect(firstTest?.query).toBe("Hello");
+  }
 });
 
 test("parseFile should parse valid JSON content", () => {
@@ -61,9 +67,13 @@ test("parseFile should parse valid JSON content", () => {
       },
     ],
   });
-  const result = parseFile(json, "test.llens.json") as TestFile;
-  expect(result.name).toBe("Test Suite");
-  expect(result.tests).toHaveLength(1);
+  const result = parseFile(json, "test.llens.json");
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    const testFile = result.value as TestFile;
+    expect(testFile.name).toBe("Test Suite");
+    expect(testFile.tests).toHaveLength(1);
+  }
 });
 
 test("parseFile should parse valid TOML content", () => {
@@ -78,24 +88,41 @@ query = "Hello"
 type = "contains"
 value = "world"
 `;
-  const result = parseFile(toml, "test.llens.toml") as TestFile;
-  expect(result.name).toBe("Test Suite");
-  expect(result.tests).toHaveLength(1);
-  expect(result.tests[0].name).toBe("Test 1");
+  const result = parseFile(toml, "test.llens.toml");
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    const testFile = result.value as TestFile;
+    expect(testFile.name).toBe("Test Suite");
+    expect(testFile.tests).toHaveLength(1);
+    const firstTest = testFile.tests[0];
+    expect(firstTest?.name).toBe("Test 1");
+  }
 });
 
-test("parseFile should throw on invalid format", () => {
-  expect(() => parseFile("content", "test.llens.txt")).toThrow();
+test("parseFile should return err on invalid format", () => {
+  const result = parseFile("content", "test.llens.txt");
+  expect(isErr(result)).toBe(true);
+  if (isErr(result)) {
+    expect(result.error.message).toContain("Unsupported file format");
+  }
 });
 
-test("parseFile should throw on invalid YAML", () => {
+test("parseFile should return err on invalid YAML", () => {
   const invalidYaml = "invalid: yaml: content: [";
-  expect(() => parseFile(invalidYaml, "test.llens.yml")).toThrow();
+  const result = parseFile(invalidYaml, "test.llens.yml");
+  expect(isErr(result)).toBe(true);
+  if (isErr(result)) {
+    expect(result.error.message).toContain("Failed to parse");
+  }
 });
 
-test("parseFile should throw on invalid JSON", () => {
+test("parseFile should return err on invalid JSON", () => {
   const invalidJson = "{ invalid json }";
-  expect(() => parseFile(invalidJson, "test.llens.json")).toThrow();
+  const result = parseFile(invalidJson, "test.llens.json");
+  expect(isErr(result)).toBe(true);
+  if (isErr(result)) {
+    expect(result.error.message).toContain("Failed to parse");
+  }
 });
 
 test("parseFile should handle empty tests array", () => {
@@ -103,9 +130,13 @@ test("parseFile should handle empty tests array", () => {
 name: Empty Test Suite
 tests: []
 `;
-  const result = parseFile(yaml, "test.llens.yml") as TestFile;
-  expect(result.name).toBe("Empty Test Suite");
-  expect(result.tests).toHaveLength(0);
+  const result = parseFile(yaml, "test.llens.yml");
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    const testFile = result.value as TestFile;
+    expect(testFile.name).toBe("Empty Test Suite");
+    expect(testFile.tests).toHaveLength(0);
+  }
 });
 
 test("parseFile should parse all assertion types", () => {
@@ -127,12 +158,17 @@ tests:
       - type: latency
         maxMs: 5000
 `;
-  const result = parseFile(yaml, "test.llens.yml") as TestFile;
-  expect(result.tests[0].expect).toHaveLength(6);
-  expect(result.tests[0].expect[0].type).toBe("contains");
-  expect(result.tests[0].expect[1].type).toBe("matches");
-  expect(result.tests[0].expect[2].type).toBe("json");
-  expect(result.tests[0].expect[3].type).toBe("schema");
-  expect(result.tests[0].expect[4].type).toBe("cost");
-  expect(result.tests[0].expect[5].type).toBe("latency");
+  const result = parseFile(yaml, "test.llens.yml");
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    const testFile = result.value as TestFile;
+    const firstTest = testFile.tests[0];
+    expect(firstTest?.expect).toHaveLength(6);
+    expect(firstTest?.expect[0]?.type).toBe("contains");
+    expect(firstTest?.expect[1]?.type).toBe("matches");
+    expect(firstTest?.expect[2]?.type).toBe("json");
+    expect(firstTest?.expect[3]?.type).toBe("schema");
+    expect(firstTest?.expect[4]?.type).toBe("cost");
+    expect(firstTest?.expect[5]?.type).toBe("latency");
+  }
 });

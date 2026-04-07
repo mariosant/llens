@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { LLMClient } from "./llm-client";
+import { createLLMClient } from "./llm-client";
+import { isOk, isErr } from "../utils/result";
 import type { RuntimeConfig } from "../types";
 
 test("LLMClient should send correct request format", async () => {
@@ -28,7 +29,7 @@ test("LLMClient should send correct request format", async () => {
     baseUrl: "https://api.test.com/v1",
   };
   
-  const client = new LLMClient(config);
+  const client = createLLMClient(config);
   await client.complete("Test query");
   
   expect(capturedUrl).toBe("https://api.test.com/v1/chat/completions");
@@ -71,15 +72,18 @@ test("LLMClient should parse response correctly", async () => {
     baseUrl: "https://api.test.com/v1",
   };
   
-  const client = new LLMClient(config);
-  const response = await client.complete("What is the capital of France?");
+  const client = createLLMClient(config);
+  const result = await client.complete("What is the capital of France?");
   
-  expect(response.content).toBe("Paris is the capital");
-  expect(response.usage).toEqual({
-    prompt_tokens: 10,
-    completion_tokens: 5,
-    total_tokens: 15,
-  });
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    expect(result.value.content).toBe("Paris is the capital");
+    expect(result.value.usage).toEqual({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+    });
+  }
   
   global.fetch = originalFetch;
 });
@@ -108,7 +112,7 @@ test("LLMClient should include response_format when specified", async () => {
     response_format: { type: "json_object" },
   };
   
-  const client = new LLMClient(config);
+  const client = createLLMClient(config);
   await client.complete("Return JSON");
   
   expect(capturedBody).not.toBeNull();
@@ -136,9 +140,14 @@ test("LLMClient should handle API errors", async () => {
     baseUrl: "https://api.test.com/v1",
   };
   
-  const client = new LLMClient(config);
+  const client = createLLMClient(config);
+  const result = await client.complete("Test");
   
-  await expect(client.complete("Test")).rejects.toThrow("Invalid API key");
+  expect(isErr(result)).toBe(true);
+  if (isErr(result)) {
+    expect(result.error.message).toBe("Invalid API key");
+    expect(result.error.status).toBe(401);
+  }
   
   global.fetch = originalFetch;
 });
@@ -157,9 +166,13 @@ test("LLMClient should handle network errors", async () => {
     baseUrl: "https://api.test.com/v1",
   };
   
-  const client = new LLMClient(config);
+  const client = createLLMClient(config);
+  const result = await client.complete("Test");
   
-  await expect(client.complete("Test")).rejects.toThrow("Network error");
+  expect(isErr(result)).toBe(true);
+  if (isErr(result)) {
+    expect(result.error.message).toBe("Network error");
+  }
   
   global.fetch = originalFetch;
 });
@@ -184,9 +197,13 @@ test("LLMClient should handle empty choices", async () => {
     baseUrl: "https://api.test.com/v1",
   };
   
-  const client = new LLMClient(config);
+  const client = createLLMClient(config);
+  const result = await client.complete("Test");
   
-  await expect(client.complete("Test")).rejects.toThrow("No response from LLM");
+  expect(isErr(result)).toBe(true);
+  if (isErr(result)) {
+    expect(result.error.message).toBe("No response from LLM");
+  }
   
   global.fetch = originalFetch;
 });
@@ -210,11 +227,14 @@ test("LLMClient should handle missing usage data", async () => {
     baseUrl: "https://api.test.com/v1",
   };
   
-  const client = new LLMClient(config);
-  const response = await client.complete("Test");
+  const client = createLLMClient(config);
+  const result = await client.complete("Test");
   
-  expect(response.content).toBe("Hello");
-  expect(response.usage).toBeUndefined();
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    expect(result.value.content).toBe("Hello");
+    expect(result.value.usage).toBeUndefined();
+  }
   
   global.fetch = originalFetch;
 });
