@@ -543,7 +543,6 @@ const stats = await runTestFile(config, testFile, filePath, {
 
 ### Debug Tools
 
-- `debug-validate.ts` - Script for debugging file parsing
 - Use `console.log()` for quick debugging (Bun supports colored output)
 - Use `bun:test` for unit test debugging
 - Use `--reporter json` for machine-readable output

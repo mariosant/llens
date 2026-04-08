@@ -6,7 +6,7 @@ import type { RuntimeConfig } from "../types";
 test("LLMClient should send correct request format", async () => {
   let capturedUrl: string | null = null;
   let capturedOptions: RequestInit | null = null;
-  
+
   // Mock fetch
   const originalFetch = global.fetch;
   global.fetch = async (url: string | Request, options?: RequestInit) => {
@@ -17,10 +17,10 @@ test("LLMClient should send correct request format", async () => {
         choices: [{ message: { content: "Hello" } }],
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -28,18 +28,18 @@ test("LLMClient should send correct request format", async () => {
     apiKey: "test-key",
     baseUrl: "https://api.test.com/v1",
   };
-  
+
   const client = createLLMClient(config);
   await client.complete("Test query");
-  
+
   expect(capturedUrl).toBe("https://api.test.com/v1/chat/completions");
   expect(capturedOptions).not.toBeNull();
   expect(capturedOptions!.method).toBe("POST");
-  
+
   const headers = capturedOptions!.headers as Record<string, string>;
   expect(headers["Authorization"]).toBe("Bearer test-key");
   expect(headers["Content-Type"]).toBe("application/json");
-  
+
   const body = JSON.parse(capturedOptions!.body as string);
   expect(body.model).toBe("gpt-4");
   expect(body.temperature).toBe(0.7);
@@ -47,7 +47,7 @@ test("LLMClient should send correct request format", async () => {
   expect(body.messages[0].role).toBe("system");
   expect(body.messages[1].role).toBe("user");
   expect(body.messages[1].content).toBe("Test query");
-  
+
   // Restore fetch
   global.fetch = originalFetch;
 });
@@ -60,10 +60,10 @@ test("LLMClient should parse response correctly", async () => {
         choices: [{ message: { content: "Paris is the capital" } }],
         usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -71,10 +71,10 @@ test("LLMClient should parse response correctly", async () => {
     apiKey: "test-key",
     baseUrl: "https://api.test.com/v1",
   };
-  
+
   const client = createLLMClient(config);
   const result = await client.complete("What is the capital of France?");
-  
+
   expect(isOk(result)).toBe(true);
   if (isOk(result)) {
     expect(result.value.content).toBe("Paris is the capital");
@@ -84,13 +84,13 @@ test("LLMClient should parse response correctly", async () => {
       total_tokens: 15,
     });
   }
-  
+
   global.fetch = originalFetch;
 });
 
 test("LLMClient should include response_format when specified", async () => {
   let capturedBody: Record<string, unknown> | null = null;
-  
+
   const originalFetch = global.fetch;
   global.fetch = async (_url: string | Request, options?: RequestInit) => {
     capturedBody = JSON.parse(options?.body as string);
@@ -99,10 +99,10 @@ test("LLMClient should include response_format when specified", async () => {
         choices: [{ message: { content: "{}" } }],
         usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -111,13 +111,13 @@ test("LLMClient should include response_format when specified", async () => {
     baseUrl: "https://api.test.com/v1",
     response_format: { type: "json_object" },
   };
-  
+
   const client = createLLMClient(config);
   await client.complete("Return JSON");
-  
+
   expect(capturedBody).not.toBeNull();
   expect(capturedBody!.response_format).toEqual({ type: "json_object" });
-  
+
   global.fetch = originalFetch;
 });
 
@@ -128,10 +128,10 @@ test("LLMClient should handle API errors", async () => {
       JSON.stringify({
         error: { message: "Invalid API key", type: "authentication_error" },
       }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
+      { status: 401, headers: { "Content-Type": "application/json" } },
     );
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -139,16 +139,16 @@ test("LLMClient should handle API errors", async () => {
     apiKey: "invalid-key",
     baseUrl: "https://api.test.com/v1",
   };
-  
+
   const client = createLLMClient(config);
   const result = await client.complete("Test");
-  
+
   expect(isErr(result)).toBe(true);
   if (isErr(result)) {
     expect(result.error.message).toBe("Invalid API key");
     expect(result.error.status).toBe(401);
   }
-  
+
   global.fetch = originalFetch;
 });
 
@@ -157,7 +157,7 @@ test("LLMClient should handle network errors", async () => {
   global.fetch = async () => {
     throw new Error("Network error");
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -165,15 +165,15 @@ test("LLMClient should handle network errors", async () => {
     apiKey: "test-key",
     baseUrl: "https://api.test.com/v1",
   };
-  
+
   const client = createLLMClient(config);
   const result = await client.complete("Test");
-  
+
   expect(isErr(result)).toBe(true);
   if (isErr(result)) {
     expect(result.error.message).toBe("Network error");
   }
-  
+
   global.fetch = originalFetch;
 });
 
@@ -185,10 +185,10 @@ test("LLMClient should handle empty choices", async () => {
         choices: [],
         usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10 },
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -196,15 +196,15 @@ test("LLMClient should handle empty choices", async () => {
     apiKey: "test-key",
     baseUrl: "https://api.test.com/v1",
   };
-  
+
   const client = createLLMClient(config);
   const result = await client.complete("Test");
-  
+
   expect(isErr(result)).toBe(true);
   if (isErr(result)) {
     expect(result.error.message).toBe("No response from LLM");
   }
-  
+
   global.fetch = originalFetch;
 });
 
@@ -215,10 +215,10 @@ test("LLMClient should handle missing usage data", async () => {
       JSON.stringify({
         choices: [{ message: { content: "Hello" } }],
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
-  
+
   const config: RuntimeConfig = {
     model: "gpt-4",
     temperature: 0.7,
@@ -226,15 +226,15 @@ test("LLMClient should handle missing usage data", async () => {
     apiKey: "test-key",
     baseUrl: "https://api.test.com/v1",
   };
-  
+
   const client = createLLMClient(config);
   const result = await client.complete("Test");
-  
+
   expect(isOk(result)).toBe(true);
   if (isOk(result)) {
     expect(result.value.content).toBe("Hello");
     expect(result.value.usage).toBeUndefined();
   }
-  
+
   global.fetch = originalFetch;
 });

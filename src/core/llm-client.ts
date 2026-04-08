@@ -18,7 +18,10 @@ interface LLMAPIError {
 }
 
 // Build request body from config and query
-const buildRequestBody = (config: RuntimeConfig, query: string): Record<string, unknown> => ({
+const buildRequestBody = (
+  config: RuntimeConfig,
+  query: string,
+): Record<string, unknown> => ({
   model: config.model,
   messages: [
     { role: "system", content: "You are a helpful assistant." },
@@ -31,17 +34,17 @@ const buildRequestBody = (config: RuntimeConfig, query: string): Record<string, 
 // Parse API response into LLMResponse
 const parseResponse = (data: LLMAPIResponse): Result<LLMResponse, LLMError> => {
   const choices = data.choices;
-  
+
   if (!choices || choices.length === 0) {
     return err({ kind: "llm_error", message: "No response from LLM" });
   }
-  
+
   const message = choices[0]?.message;
-  
+
   if (!message) {
     return err({ kind: "llm_error", message: "No message in LLM response" });
   }
-  
+
   return ok({
     content: message.content || "",
     usage: data.usage,
@@ -61,11 +64,11 @@ const handleHttpError = async (response: Response): Promise<LLMError> => {
 // Make API call and handle response
 const callLLM = async (
   config: RuntimeConfig,
-  query: string
+  query: string,
 ): Promise<Result<LLMResponse, LLMError>> => {
   const url = `${config.baseUrl}/chat/completions`;
   const body = buildRequestBody(config, query);
-  
+
   const responseResult = await tryAsync(() =>
     fetch(url, {
       method: "POST",
@@ -74,25 +77,27 @@ const callLLM = async (
         Authorization: `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify(body),
-    })
+    }),
   );
-  
+
   if (responseResult.kind === "err") {
     return err({ kind: "llm_error", message: responseResult.error.message });
   }
-  
+
   const response = responseResult.value;
-  
+
   if (!response.ok) {
     return err(await handleHttpError(response));
   }
-  
-  const dataResult = await tryAsync(() => response.json() as Promise<LLMAPIResponse>);
-  
+
+  const dataResult = await tryAsync(
+    () => response.json() as Promise<LLMAPIResponse>,
+  );
+
   if (dataResult.kind === "err") {
     return err({ kind: "llm_error", message: dataResult.error.message });
   }
-  
+
   return parseResponse(dataResult.value);
 };
 

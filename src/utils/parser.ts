@@ -1,9 +1,4 @@
-import {
-  parseYAML,
-  parseJSON,
-  parseTOML,
-  parseJSON5,
-} from "confbox";
+import { parseYAML, parseJSON, parseTOML, parseJSON5 } from "confbox";
 import { ok, err, trySync, type Result } from "./result";
 import type { ParseError } from "../types";
 
@@ -20,7 +15,9 @@ const formatPatterns: Record<string, Format> = {
 
 export const detectFormat = (filename: string): Format | null => {
   const lower = filename.toLowerCase();
-  const pattern = Object.keys(formatPatterns).find((ext) => lower.endsWith(ext));
+  const pattern = Object.keys(formatPatterns).find((ext) =>
+    lower.endsWith(ext),
+  );
   return pattern ? (formatPatterns[pattern] ?? null) : null;
 };
 
@@ -32,9 +29,12 @@ const parsers: Record<Format, (content: string) => unknown> = {
   json5: parseJSON5,
 };
 
-export const parseFile = (content: string, filename: string): Result<unknown, ParseError> => {
+export const parseFile = (
+  content: string,
+  filename: string,
+): Result<unknown, ParseError> => {
   const format = detectFormat(filename);
-  
+
   if (!format) {
     return err({
       kind: "parse_error",
@@ -42,12 +42,12 @@ export const parseFile = (content: string, filename: string): Result<unknown, Pa
       filePath: filename,
     });
   }
-  
+
   const parse = parsers[format];
   const result = trySync(() => parse(content));
-  
-  return result.kind === "ok" 
-    ? result 
+
+  return result.kind === "ok"
+    ? result
     : err({
         kind: "parse_error",
         message: `Failed to parse ${filename}: ${result.error.message}`,
@@ -57,16 +57,16 @@ export const parseFile = (content: string, filename: string): Result<unknown, Pa
 
 // Type-safe parse with schema validation helper
 export const parseFileWithSchema = <T>(
-  content: string, 
+  content: string,
   filename: string,
-  validate: (data: unknown) => T
+  validate: (data: unknown) => T,
 ): Result<T, ParseError> => {
   const parsed = parseFile(content, filename);
-  
+
   if (parsed.kind === "err") return parsed;
-  
+
   const validated = trySync(() => validate(parsed.value));
-  
+
   return validated.kind === "ok"
     ? validated
     : err({

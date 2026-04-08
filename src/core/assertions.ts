@@ -26,7 +26,7 @@ export interface AllAssertionsResult {
 // Individual assertion evaluators - each returns Result
 const evaluateContains = (
   response: LLMResponse,
-  assertion: ContainsAssertion
+  assertion: ContainsAssertion,
 ): AssertionResult => {
   const pass = response.content.includes(assertion.value);
   return {
@@ -37,7 +37,7 @@ const evaluateContains = (
 
 const evaluateMatches = (
   response: LLMResponse,
-  assertion: MatchesAssertion
+  assertion: MatchesAssertion,
 ): AssertionResult => {
   const patternResult = trySync(() => {
     const pattern = assertion.pattern;
@@ -57,20 +57,25 @@ const evaluateMatches = (
         const pass = patternResult.value.test(response.content);
         return {
           pass,
-          message: pass ? "" : `Expected response to match pattern "${assertion.pattern}"`,
+          message: pass
+            ? ""
+            : `Expected response to match pattern "${assertion.pattern}"`,
         };
       })();
 };
 
 const evaluateJson = (
   response: LLMResponse,
-  _assertion: JsonAssertion
+  _assertion: JsonAssertion,
 ): AssertionResult => {
   const result = trySync(() => JSON.parse(response.content));
 
   return result.kind === "ok"
     ? { pass: true, message: "" }
-    : { pass: false, message: `Response is not valid JSON: ${result.error.message}` };
+    : {
+        pass: false,
+        message: `Response is not valid JSON: ${result.error.message}`,
+      };
 };
 
 // Zod type mapping for schema properties
@@ -84,16 +89,21 @@ const zodTypeMap: Record<string, () => z.ZodType> = {
 
 const evaluateSchema = (
   response: LLMResponse,
-  assertion: SchemaAssertion
+  assertion: SchemaAssertion,
 ): AssertionResult => {
   const parseResult = trySync(() => JSON.parse(response.content));
 
   if (parseResult.kind === "err") {
-    return { pass: false, message: `Invalid JSON: ${parseResult.error.message}` };
+    return {
+      pass: false,
+      message: `Invalid JSON: ${parseResult.error.message}`,
+    };
   }
 
   const data = parseResult.value;
-  const properties = assertion.schema.properties as Record<string, { type: string }> | undefined;
+  const properties = assertion.schema.properties as
+    | Record<string, { type: string }>
+    | undefined;
 
   if (!properties) {
     return { pass: true, message: "" };
@@ -113,7 +123,7 @@ const evaluateSchema = (
 
     if (hasRequired) {
       const requiredShape = Object.fromEntries(
-        required!.map((field) => [field, shape[field]])
+        required!.map((field) => [field, shape[field]]),
       );
       z.object(requiredShape).parse(data);
     } else {
@@ -137,7 +147,7 @@ const evaluateSchema = (
 
 const evaluateCost = (
   response: LLMResponse,
-  assertion: CostAssertion
+  assertion: CostAssertion,
 ): AssertionResult => {
   const hasUsage = response.usage !== undefined;
   const noLimit = !assertion.maxTokens && !assertion.maxCost;
@@ -148,7 +158,8 @@ const evaluateCost = (
       : { pass: false, message: "No usage data available from LLM response" };
   }
 
-  const overTokenLimit = assertion.maxTokens !== undefined &&
+  const overTokenLimit =
+    assertion.maxTokens !== undefined &&
     response.usage!.total_tokens > assertion.maxTokens;
 
   return overTokenLimit
@@ -162,7 +173,7 @@ const evaluateCost = (
 const evaluateLatency = (
   _response: LLMResponse,
   assertion: LatencyAssertion,
-  latencyMs: number
+  latencyMs: number,
 ): AssertionResult => {
   const overLimit = latencyMs > assertion.maxMs;
   return overLimit
@@ -177,15 +188,20 @@ const evaluateLatency = (
 type AssertionEvaluator = (
   response: LLMResponse,
   assertion: Assertion,
-  latencyMs: number
+  latencyMs: number,
 ) => AssertionResult;
 
 const assertionEvaluators: Record<Assertion["type"], AssertionEvaluator> = {
-  contains: (response, assertion) => evaluateContains(response, assertion as ContainsAssertion),
-  matches: (response, assertion) => evaluateMatches(response, assertion as MatchesAssertion),
-  json: (response, assertion) => evaluateJson(response, assertion as JsonAssertion),
-  schema: (response, assertion) => evaluateSchema(response, assertion as SchemaAssertion),
-  cost: (response, assertion) => evaluateCost(response, assertion as CostAssertion),
+  contains: (response, assertion) =>
+    evaluateContains(response, assertion as ContainsAssertion),
+  matches: (response, assertion) =>
+    evaluateMatches(response, assertion as MatchesAssertion),
+  json: (response, assertion) =>
+    evaluateJson(response, assertion as JsonAssertion),
+  schema: (response, assertion) =>
+    evaluateSchema(response, assertion as SchemaAssertion),
+  cost: (response, assertion) =>
+    evaluateCost(response, assertion as CostAssertion),
   latency: (response, assertion, latencyMs) =>
     evaluateLatency(response, assertion as LatencyAssertion, latencyMs),
 };
@@ -194,7 +210,7 @@ const assertionEvaluators: Record<Assertion["type"], AssertionEvaluator> = {
 export const evaluateAssertion = (
   response: LLMResponse,
   assertion: Assertion,
-  latencyMs: number
+  latencyMs: number,
 ): AssertionResult => {
   const evaluator = assertionEvaluators[assertion.type];
   return evaluator
@@ -206,21 +222,20 @@ export const evaluateAssertion = (
 const collectErrors = (
   response: LLMResponse,
   assertions: readonly Assertion[],
-  latencyMs: number
+  latencyMs: number,
 ): ReadonlyArray<AssertionError> =>
-  reduceArray<Assertion, AssertionError[]>(
-    (errors, assertion) => {
-      const result = evaluateAssertion(response, assertion, latencyMs);
-      return result.pass ? errors : [...errors, { assertion, message: result.message }];
-    },
-    []
-  )(assertions);
+  reduceArray<Assertion, AssertionError[]>((errors, assertion) => {
+    const result = evaluateAssertion(response, assertion, latencyMs);
+    return result.pass
+      ? errors
+      : [...errors, { assertion, message: result.message }];
+  }, [])(assertions);
 
 // Evaluate all assertions
 export const evaluateAllAssertions = (
   response: LLMResponse,
   assertions: readonly Assertion[],
-  latencyMs: number
+  latencyMs: number,
 ): AllAssertionsResult => {
   const errors = collectErrors(response, assertions, latencyMs);
   return { pass: errors.length === 0, errors };

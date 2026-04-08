@@ -2,45 +2,72 @@ import { test, expect } from "bun:test";
 import { evaluateAssertion, evaluateAllAssertions } from "./assertions";
 import type { LLMResponse } from "../types";
 
-const mockResponse = (content: string, usage?: LLMResponse["usage"]): LLMResponse => ({
+const mockResponse = (
+  content: string,
+  usage?: LLMResponse["usage"],
+): LLMResponse => ({
   content,
   usage,
 });
 
 test("contains assertion passes when substring exists", () => {
   const response = mockResponse("The capital of France is Paris");
-  const result = evaluateAssertion(response, { type: "contains", value: "Paris" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "contains", value: "Paris" },
+    100,
+  );
   expect(result.pass).toBe(true);
 });
 
 test("contains assertion fails when substring missing", () => {
   const response = mockResponse("The capital of France is Paris");
-  const result = evaluateAssertion(response, { type: "contains", value: "London" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "contains", value: "London" },
+    100,
+  );
   expect(result.pass).toBe(false);
   expect(result.message).toContain("London");
 });
 
 test("contains assertion is case-sensitive", () => {
   const response = mockResponse("Paris");
-  const result = evaluateAssertion(response, { type: "contains", value: "paris" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "contains", value: "paris" },
+    100,
+  );
   expect(result.pass).toBe(false);
 });
 
 test("matches assertion passes with valid regex", () => {
   const response = mockResponse("The year is 2024");
-  const result = evaluateAssertion(response, { type: "matches", pattern: "\\d{4}" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "matches", pattern: "\\d{4}" },
+    100,
+  );
   expect(result.pass).toBe(true);
 });
 
 test("matches assertion fails when regex doesn't match", () => {
   const response = mockResponse("Hello world");
-  const result = evaluateAssertion(response, { type: "matches", pattern: "\\d+" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "matches", pattern: "\\d+" },
+    100,
+  );
   expect(result.pass).toBe(false);
 });
 
 test("matches assertion supports case-insensitive flag", () => {
   const response = mockResponse("HELLO WORLD");
-  const result = evaluateAssertion(response, { type: "matches", pattern: "/hello/i" }, 100);
+  const result = evaluateAssertion(
+    response,
+    { type: "matches", pattern: "/hello/i" },
+    100,
+  );
   expect(result.pass).toBe(true);
 });
 
@@ -72,7 +99,7 @@ test("schema assertion passes with valid object", () => {
         required: ["name", "age"],
       },
     },
-    100
+    100,
   );
   expect(result.pass).toBe(true);
 });
@@ -92,7 +119,7 @@ test("schema assertion fails when property missing", () => {
         required: ["name", "age"],
       },
     },
-    100
+    100,
   );
   expect(result.pass).toBe(false);
 });
@@ -111,20 +138,36 @@ test("schema assertion fails with wrong type", () => {
         },
       },
     },
-    100
+    100,
   );
   expect(result.pass).toBe(false);
 });
 
 test("cost assertion passes when under token limit", () => {
-  const response = mockResponse("Test", { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 });
-  const result = evaluateAssertion(response, { type: "cost", maxTokens: 100 }, 100);
+  const response = mockResponse("Test", {
+    prompt_tokens: 10,
+    completion_tokens: 20,
+    total_tokens: 30,
+  });
+  const result = evaluateAssertion(
+    response,
+    { type: "cost", maxTokens: 100 },
+    100,
+  );
   expect(result.pass).toBe(true);
 });
 
 test("cost assertion fails when over token limit", () => {
-  const response = mockResponse("Test", { prompt_tokens: 50, completion_tokens: 100, total_tokens: 150 });
-  const result = evaluateAssertion(response, { type: "cost", maxTokens: 100 }, 100);
+  const response = mockResponse("Test", {
+    prompt_tokens: 50,
+    completion_tokens: 100,
+    total_tokens: 150,
+  });
+  const result = evaluateAssertion(
+    response,
+    { type: "cost", maxTokens: 100 },
+    100,
+  );
   expect(result.pass).toBe(false);
   expect(result.message).toContain("150");
 });
@@ -137,13 +180,21 @@ test("cost assertion passes when usage undefined and no limit", () => {
 
 test("latency assertion passes when under limit", () => {
   const response = mockResponse("Test");
-  const result = evaluateAssertion(response, { type: "latency", maxMs: 1000 }, 500);
+  const result = evaluateAssertion(
+    response,
+    { type: "latency", maxMs: 1000 },
+    500,
+  );
   expect(result.pass).toBe(true);
 });
 
 test("latency assertion fails when over limit", () => {
   const response = mockResponse("Test");
-  const result = evaluateAssertion(response, { type: "latency", maxMs: 500 }, 1000);
+  const result = evaluateAssertion(
+    response,
+    { type: "latency", maxMs: 500 },
+    1000,
+  );
   expect(result.pass).toBe(false);
   expect(result.message).toContain("1000ms");
 });

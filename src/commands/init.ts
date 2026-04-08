@@ -48,7 +48,10 @@ const checkFileExists = async (filename: string): Promise<boolean> => {
 };
 
 // Write file operation
-const writeFile = async (filename: string, content: string): Promise<Result<void, Error>> => {
+const writeFile = async (
+  filename: string,
+  content: string,
+): Promise<Result<void, Error>> => {
   try {
     await Bun.write(filename, content);
     return ok(undefined);
@@ -60,14 +63,14 @@ const writeFile = async (filename: string, content: string): Promise<Result<void
 // Main init logic
 const initTestFile = async (name: string): Promise<Result<void, string>> => {
   const filename = ensureExtension(name);
-  
+
   const exists = await checkFileExists(filename);
   if (exists) {
     return err(`File ${filename} already exists.`);
   }
-  
+
   const writeResult = await writeFile(filename, SAMPLE_TEST);
-  
+
   return writeResult.kind === "ok"
     ? ok(undefined)
     : err(`Failed to create file: ${writeResult.error.message}`);
@@ -87,12 +90,12 @@ export default defineCommand({
   },
   async run({ args }) {
     const result = await initTestFile(args.name);
-    
+
     if (result.kind === "err") {
       console.error(`Error: ${result.error}`);
       process.exit(1);
     }
-    
+
     const filename = ensureExtension(args.name);
     console.log(`Created ${filename}`);
     console.log();
