@@ -1,0 +1,66 @@
+# LLM Quality Assurance Test Suite
+#
+# Copy this file as a starting point for your own tests.
+# Rename to match your test suite (e.g., my-tests.llens.yml)
+#
+# Documentation: https://github.com/mariosant/llens
+# Skill: .agents/skills/llens/SKILL.md
+
+name: "My Test Suite"
+config:
+  model: gpt-4
+  temperature: 0.7
+  timeout: 30000
+
+tests:
+  # Basic content validation
+  - name: "Basic contains check"
+    query: "What is the capital of France?"
+    expect:
+      - type: contains
+        value: "Paris"
+
+  # Regex pattern matching
+  - name: "Pattern match"
+    query: "What is today's date?"
+    expect:
+      - type: matches
+        pattern: "\\d{4}-\\d{2}-\\d{2}"
+
+  # JSON response validation
+  - name: "JSON structure"
+    query: 'Return JSON with fields "name" (string) and "age" (number)'
+    config:
+      response_format:
+        type: json_object
+    expect:
+      - type: json
+      - type: schema
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+            age:
+              type: number
+          required:
+            - name
+            - age
+
+  # Performance assertions
+  - name: "Fast response"
+    query: "What is 2+2?"
+    expect:
+      - type: latency
+        maxMs: 3000
+      - type: cost
+        maxTokens: 50
+
+  # Multi-model comparison
+  - name: "GPT-4 specific"
+    query: "Explain quantum entanglement"
+    config:
+      model: gpt-4
+    expect:
+      - type: contains
+        value: "entanglement"
