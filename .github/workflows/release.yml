@@ -39,12 +39,20 @@ jobs:
       - name: Build ${{ matrix.platform }} binary
         run: bun run build:${{ matrix.platform }}
 
+      - name: Determine artifact path
+        id: artifact
+        run: |
+          if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
+            echo "path=dist/llens-windows-x64.exe" >> $GITHUB_OUTPUT
+          else
+            echo "path=dist/llens-${{ matrix.platform }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: llens-${{ matrix.platform }}
-          path: |
-            dist/llens-${{ matrix.platform }}{{ matrix.platform == 'windows-x64' && '.exe' || '' }}
+          path: ${{ steps.artifact.outputs.path }}
 
   release:
     needs: build-binary
