@@ -20,8 +20,6 @@ jobs:
             platform: darwin-x64
           - os: macos-latest
             platform: darwin-arm64
-          - os: windows-latest
-            platform: windows-x64
 
     steps:
       - name: Checkout code
@@ -39,14 +37,11 @@ jobs:
       - name: Build ${{ matrix.platform }} binary
         run: bun run build:${{ matrix.platform }}
 
-      - name: Determine artifact path
-        id: artifact
-        run: |
-          if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
-            echo "path=dist/llens-windows-x64.exe" >> $GITHUB_OUTPUT
-          else
-            echo "path=dist/llens-${{ matrix.platform }}" >> $GITHUB_OUTPUT
-          fi
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: llens-${{ matrix.platform }}
+          path: dist/llens-${{ matrix.platform }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
@@ -82,11 +77,7 @@ jobs:
             base="${dir%/}"
             if [[ "$base" == llens-* ]]; then
               platform="${base#llens-}"
-              if [[ "$platform" == "windows-x64" ]]; then
-                mv "${dir}"* "llens-windows-x64.exe" 2>/dev/null || true
-              else
-                mv "${dir}"* "llens-${platform}"
-              fi
+              mv "${dir}"* "llens-${platform}"
             fi
           done
           rm -rf */ || true

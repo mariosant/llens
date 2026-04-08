@@ -17,8 +17,7 @@
     "build:linux-arm64": "bun build --compile --outfile dist/llens-linux-arm64 ./src/cli.ts",
     "build:darwin-x64": "bun build --compile --outfile dist/llens-darwin-x64 ./src/cli.ts",
     "build:darwin-arm64": "bun build --compile --outfile dist/llens-darwin-arm64 ./src/cli.ts",
-    "build:windows-x64": "bun build --compile --outfile dist/llens-windows-x64.exe ./src/cli.ts",
-    "build:all": "bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:darwin-x64 && bun run build:darwin-arm64 && bun run build:windows-x64",
+    "build:all": "bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:darwin-x64 && bun run build:darwin-arm64",
     "semantic-release": "semantic-release"
   },
   "devDependencies": {
