@@ -3,19 +3,19 @@ import type { Result } from "../utils/result";
 
 // Error types
 export interface LLMError {
-  readonly kind: 'llm_error';
+  readonly kind: "llm_error";
   readonly message: string;
   readonly status?: number;
 }
 
 export interface ParseError {
-  readonly kind: 'parse_error';
+  readonly kind: "parse_error";
   readonly message: string;
   readonly filePath: string;
 }
 
 export interface ConfigError {
-  readonly kind: 'config_error';
+  readonly kind: "config_error";
   readonly message: string;
 }
 
@@ -157,38 +157,21 @@ export interface TestStats {
   readonly duration: number;
 }
 
-// Formatter functions (pure, no side effects)
-export interface FormatterOutput {
-  readonly suiteStart: (name: string) => string;
-  readonly suiteEnd: (name: string, stats: TestStats) => string;
-  readonly testPass: (name: string, result: TestResult) => string;
-  readonly testFail: (name: string, result: TestResult, error: AssertionError) => string;
-  readonly testStart: (name: string) => string;
-  readonly summary: (stats: TestStats) => string;
-  readonly start: () => string;
-  readonly end: () => string;
-}
-
-// Old Formatter interface is deprecated - mark as such but keep for backward compat
-/** @deprecated Use FormatterOutput instead */
-export interface Formatter extends FormatterOutput {}
-
 // Test result (Result pattern)
-export type TestResult = 
-  | { readonly name: string; readonly passed: true; readonly duration: number; readonly response: LLMResponse }
-  | { readonly name: string; readonly passed: false; readonly duration: number; readonly response: LLMResponse; readonly error: AssertionError };
+export type TestResult =
+  | {
+      readonly name: string;
+      readonly passed: true;
+      readonly duration: number;
+      readonly response: LLMResponse;
+    }
+  | {
+      readonly name: string;
+      readonly passed: false;
+      readonly duration: number;
+      readonly response: LLMResponse;
+      readonly error: AssertionError;
+    };
 
 // Configuration levels
-export type ConfigLevel = 'default' | 'file' | 'env' | 'test' | 'cli';
-
-// Runner state (immutable)
-export interface RunnerState {
-  readonly config: RuntimeConfig;
-  readonly formatter: FormatterOutput;
-}
-
-// Test execution result with stats
-export interface ExecutionResult {
-  readonly results: readonly TestResult[];
-  readonly stats: TestStats;
-}
+export type ConfigLevel = "default" | "file" | "env" | "test" | "cli";

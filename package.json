@@ -15,7 +15,10 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "prettier": "^3.8.1"
+    "@types/mocha": "^10.0.6",
+    "mocha": "^10.2.0",
+    "prettier": "^3.8.1",
+    "tsx": "^4.7.0"
   },
   "peerDependencies": {
     "typescript": "^5"

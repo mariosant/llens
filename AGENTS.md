@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**llens** is an LLM Quality Assurance Test Runner built with [Bun](https://bun.sh/). It allows you to:
+**llens** is an LLM Quality Assurance Test Runner built with [Bun](https://bun.sh/) and [Mocha](https://mochajs.org/). It allows you to:
 
 - Write declarative test files in YAML/JSON/TOML/JSON5
 - Test LLM responses against assertions (content, JSON, schema, cost, latency)
@@ -26,10 +26,7 @@ src/
 │   ├── assertions.ts   # Assertion evaluation engine
 │   ├── config.ts       # Configuration loading & merging
 │   ├── llm-client.ts   # OpenAI-compatible API client
-│   └── runner.ts       # Test execution orchestrator
-├── formatters/         # Output formatters
-│   ├── base.ts         # Formatter interface
-│   └── plain.ts        # Plain text formatter
+│   └── runner.ts       # Test execution orchestrator (Mocha-based)
 ├── types/              # TypeScript types & Zod schemas
 │   └── index.ts
 └── utils/              # Utilities
@@ -66,12 +63,12 @@ Key functions:
 
 #### Test Runner (`src/core/runner.ts`)
 
-The `TestRunner` class orchestrates test execution:
+The runner uses Mocha's programmatic API to execute LLM tests:
 
 - Merges config for each test
 - Creates LLM client instances
-- Runs tests sequentially
-- Reports results via formatters
+- Runs tests via Mocha's battle-tested runner
+- Uses Mocha reporters for output
 
 #### LLM Client (`src/core/llm-client.ts`)
 
@@ -192,6 +189,9 @@ bun run test:watch
 **Development:**
 
 - `@types/bun` - Bun type definitions
+- `@types/mocha` - Mocha type definitions
+- `mocha` - Test execution framework
+- `tsx` - TypeScript execution for mocha
 
 **Peer:**
 
@@ -259,7 +259,7 @@ Each command in `src/commands/` should:
 
 ### Test Runner
 
-Use Bun's built-in test runner (`bun:test`):
+Use Bun's built-in test runner (`bun:test`) for unit tests:
 
 ```typescript
 import { test, expect } from "bun:test";
@@ -269,9 +269,11 @@ test("description", () => {
 });
 ```
 
+The LLM test runner (`src/core/runner.ts`) uses Mocha's programmatic API to execute integration tests against LLM providers.
+
 ### Test Patterns
 
-1. **Unit tests** - Test individual functions in isolation
+1. **Unit tests** - Test individual functions in isolation using `bun:test`
 2. **Mock external dependencies** - Mock LLM responses for assertion tests
 3. **Test edge cases** - Invalid inputs, error conditions
 4. **Test CLI commands** - Use child processes or direct function calls
@@ -298,7 +300,7 @@ test("contains assertion passes", () => {
 ### Running Tests
 
 ```bash
-# All tests
+# All unit tests
 bun test
 
 # Specific file
@@ -306,9 +308,6 @@ bun test src/core/assertions.test.ts
 
 # Watch mode
 bun test --watch
-
-# With coverage (Bun v1.1+)
-bun test --coverage
 ```
 
 ## Configuration
@@ -433,12 +432,21 @@ function evaluateCustom(
 
 4. Add tests in `src/core/assertions.test.ts`.
 
-### Adding a New Formatter
+### Adding a New Reporter
 
-1. Implement `Formatter` interface from `src/formatters/base.ts`
-2. Create new file in `src/formatters/` (e.g., `json.ts`)
-3. Add CLI flag in `src/commands/run.ts` to select formatter
-4. Export and register in runner
+LLens uses Mocha reporters for output. To add a new reporter:
+
+1. Install a Mocha reporter package (e.g., `mocha-junit-reporter`)
+2. Add CLI option in `src/commands/run.ts` for the reporter
+3. Pass reporter name via Mocha options
+
+Example:
+
+```bash
+llens run --reporter json
+llens run --reporter dot
+llens run --reporter mocha-junit-reporter
+```
 
 ### Adding a New Command
 
@@ -477,10 +485,11 @@ function evaluateCustom(
 
 ### Testing
 
-- Use `bun:test` for all tests
-- No external test runners needed
+- Use `bun:test` for all unit tests
+- No external test runners needed for unit tests
 - Built-in watch mode: `bun test --watch`
 - Built-in coverage: `bun test --coverage` (Bun v1.1+)
+- LLM integration tests use Mocha via `src/core/runner.ts`
 
 ### Development
 
@@ -516,12 +525,11 @@ const config = await loadConfig(process.cwd(), {
 ### Running Tests
 
 ```typescript
-import { TestRunner } from "./core/runner";
-import { PlainFormatter } from "./formatters/plain";
+import { runTestFile } from "./core/runner";
 
-const formatter = new PlainFormatter();
-const runner = new TestRunner(config, formatter);
-const stats = await runner.runTestFile(testFile, filePath);
+const stats = await runTestFile(config, testFile, filePath, {
+  reporter: "spec",
+});
 ```
 
 ## Debugging
@@ -538,11 +546,11 @@ const stats = await runner.runTestFile(testFile, filePath);
 - `debug-validate.ts` - Script for debugging file parsing
 - Use `console.log()` for quick debugging (Bun supports colored output)
 - Use `bun:test` for unit test debugging
+- Use `--reporter json` for machine-readable output
 
 ### Logs
 
-- CLI outputs to stdout/stderr
-- Formatter handles test result display
+- CLI outputs to stdout/stderr via Mocha reporters
 - Errors exit with code 1
 
 ## Contributing
@@ -553,258 +561,161 @@ const stats = await runner.runTestFile(testFile, filePath);
 4. Run `bun test` before committing
 5. Use TDD approach when possible
 
-## Functional Programming Style Guide
+## Coding Style Guide
 
-This project follows a strict functional programming style. All code must adhere to these principles:
+This project aims for clean, readable, and maintainable code. Prefer declarative patterns over imperative ones, and keep code flat and simple.
 
 ### Core Principles
 
-1. **No Classes** - Use factory functions and closures instead of classes
+1. **Prefer Declarative Over Imperative** - Use array methods and expressions instead of manual iteration
 
    ```typescript
-   // ❌ Don't use classes
-   class MyClass {
-     private value: number;
-     constructor(v: number) {
-       this.value = v;
-     }
-     getValue() {
-       return this.value;
-     }
-   }
-
-   // ✅ Use factory functions
-   const createMyThing = (value: number) => ({
-     getValue: () => value,
-   });
-   ```
-
-2. **No Mutable Variables** - Use `const` only, never `let` or `var`
-
-   ```typescript
-   // ❌ Don't use let
-   let count = 0;
-   for (const item of items) {
-     count += 1;
-   }
-
-   // ✅ Use const with reduce
-   const count = items.reduce((acc) => acc + 1, 0);
-   ```
-
-3. **No Loops** - Use array methods instead of `for`, `while`, `for...of`
-
-   ```typescript
-   // ❌ Don't use loops
+   // ❌ Imperative: manual loops and mutation
    const results = [];
    for (const item of items) {
-     results.push(transform(item));
+     if (item.active) {
+       results.push(item.name.toUpperCase());
+     }
    }
 
-   // ✅ Use map
-   const results = items.map(transform);
+   // ✅ Declarative: chain array methods
+   const results = items
+     .filter((item) => item.active)
+     .map((item) => item.name.toUpperCase());
    ```
 
-4. **No Try/Catch** - Use the `Result<T, E>` type for error handling
+2. **Avoid Deep Nesting** - Use early returns and guard clauses to flatten conditionals
 
    ```typescript
-   import { ok, err, tryAsync, type Result } from "./utils/result";
-
-   // ❌ Don't throw
-   async function fetchData(): Promise<Data> {
-     const response = await fetch(url);
-     if (!response.ok) throw new Error("Failed");
-     return response.json();
-   }
-
-   // ✅ Return Result type
-   async function fetchData(): Promise<Result<Data, Error>> {
-     const responseResult = await tryAsync(() => fetch(url));
-     if (responseResult.kind === "err") return responseResult;
-     // ... continue with success case
-     return ok(data);
-   }
-   ```
-
-5. **No Nested Conditionals** - Use early returns, lookup objects, or pattern matching
-
-   ```typescript
-   // ❌ Avoid nested if/else
-   if (conditionA) {
-     if (conditionB) {
-       return value1;
+   // ❌ Deeply nested
+   if (user) {
+     if (user.isActive) {
+       if (user.hasPermission) {
+         return process(user);
+       } else {
+         return { error: "No permission" };
+       }
      } else {
-       return value2;
+       return { error: "User inactive" };
      }
    } else {
-     return value3;
+     return { error: "No user" };
    }
 
-   // ✅ Use early returns
-   if (!conditionA) return value3;
-   if (!conditionB) return value2;
-   return value1;
-
-   // ✅ Or use lookup objects
-   const handlers: Record<Type, () => Result> = {
-     typeA: handleA,
-     typeB: handleB,
-   };
-   return handlers[value.type]();
+   // ✅ Flat with early returns
+   if (!user) return { error: "No user" };
+   if (!user.isActive) return { error: "User inactive" };
+   if (!user.hasPermission) return { error: "No permission" };
+   return process(user);
    ```
 
-### Functional Utilities
+3. **Prefer const, but let is OK when needed** - Default to const, but don't force awkward workarounds
 
-The project provides utilities in `src/utils/result.ts` and `src/utils/functional.ts`:
+   ```typescript
+   // ✅ const by default
+   const name = "test";
+   const doubled = items.map((x) => x * 2);
 
-#### Result Type (Either Monad)
+   // ✅ let is fine when it makes code clearer
+   let result = initialValue;
+   if (condition) {
+     result = alternativeValue;
+   }
+   ```
 
-```typescript
-import { ok, err, isOk, isErr, map, flatMap, unwrapOr } from "./utils/result";
+4. **Let Errors Bubble Up** - Catch errors at boundaries, not defensively at every level
 
-// Creating results
-const success = ok(value);
-const failure = err(error);
+   ```typescript
+   // ❌ Defensive programming everywhere
+   function parseConfig(input: string): Config | null {
+     if (!input) return null;
+     try {
+       const parsed = JSON.parse(input);
+       if (!parsed.version) return null;
+       return parsed;
+     } catch {
+       return null;
+     }
+   }
 
-// Transforming results
-const mapped = map((x) => x * 2)(success); // Result<number, Error>
-const flatMapped = flatMap((x) => ok(x * 2))(success);
+   function loadConfig(): Config | null {
+     const raw = readFileSync("config.json");
+     return parseConfig(raw);
+   }
 
-// Extracting values
-const value = unwrapOr(defaultValue)(result);
-```
+   // Caller has to check null at every step
+   const config = loadConfig();
+   if (!config) {
+     /* handle error */
+   }
 
-#### Array Utilities (Point-free Style)
+   // ✅ Let errors bubble, catch at boundary
+   function parseConfig(input: string): Config {
+     if (!input) throw new Error("Empty input");
+     const parsed = JSON.parse(input);
+     if (!parsed.version) throw new Error("Missing version");
+     return parsed;
+   }
 
-```typescript
-import {
-  mapArray,
-  filterArray,
-  reduceArray,
-  traverse,
-} from "./utils/functional";
+   function loadConfig(): Config {
+     const raw = readFileSync("config.json");
+     return parseConfig(raw);
+   }
 
-// All utilities are curried for composition
-const double = mapArray((x: number) => x * 2);
-const evens = filterArray((x: number) => x % 2 === 0);
-const sum = reduceArray((a: number, b: number) => a + b, 0);
+   // Catch once at the boundary
+   try {
+     const config = loadConfig();
+     runApp(config);
+   } catch (error) {
+     console.error("Failed to start:", error.message);
+     process.exit(1);
+   }
+   ```
 
-// Async operations
-const fetchAll = traverse((url: string) => fetch(url));
-```
+5. **Use Lookup Objects Instead of Long Switch/if-else Chains** - Make intent clear with data-driven code
 
-### Error Handling Pattern
+   ```typescript
+   // ❌ Switch statement
+   function getFormatter(type: string): Formatter {
+     switch (type) {
+       case "plain":
+         return createPlainFormatter();
+       case "json":
+         return createJsonFormatter();
+       case "silent":
+         return createSilentFormatter();
+       default:
+         return createPlainFormatter();
+     }
+   }
 
-Always handle errors explicitly using the Result type:
+   // ✅ Lookup object
+   const formatters: Record<string, () => Formatter> = {
+     plain: createPlainFormatter,
+     json: createJsonFormatter,
+     silent: createSilentFormatter,
+   };
 
-```typescript
-import { ok, err, tryAsync, type Result } from "./utils/result";
-
-async function operation(): Promise<Result<Data, AppError>> {
-  // Wrap operations that might throw
-  const result = await tryAsync(() => fetchData());
-
-  // Handle error case early
-  if (result.kind === "err") {
-    return err({ kind: "app_error", message: result.error.message });
-  }
-
-  // Continue with success
-  const data = result.value;
-  return ok(transform(data));
-}
-
-// Usage
-const result = await operation();
-if (isOk(result)) {
-  console.log("Success:", result.value);
-} else {
-  console.error("Error:", result.error);
-}
-```
-
-### Configuration Pattern
-
-Use pure functions for configuration:
-
-```typescript
-// config.ts
-const DEFAULT_CONFIG: RuntimeConfig = {
-  model: "gpt-4",
-  temperature: 0.7,
-};
-
-export const mergeConfigs = (
-  ...configs: ReadonlyArray<Partial<RuntimeConfig>>
-): RuntimeConfig =>
-  configs.reduce(
-    (merged, config) =>
-      config ? ({ ...merged, ...config } as RuntimeConfig) : merged,
-    DEFAULT_CONFIG,
-  );
-```
-
-### Factory Pattern
-
-Use factory functions instead of constructors:
-
-```typescript
-// llm-client.ts
-export const createLLMClient = (config: RuntimeConfig) => ({
-  complete: (query: string): Promise<Result<LLMResponse, LLMError>> =>
-    callLLM(config, query),
-});
-
-export type LLMClient = ReturnType<typeof createLLMClient>;
-```
-
-### Formatter Pattern
-
-Formatters should be pure functions returning strings:
-
-```typescript
-export const createPlainFormatter = (): Formatter => ({
-  suiteStart: (name: string) => `${pc.bold(name)}\n\n`,
-  testPass: (name, result) =>
-    `  ${pc.green("✓")} ${name} ${pc.gray(`(${result.duration}ms)`)}\n`,
-  // ... all methods return strings, no console.log
-});
-```
+   function getFormatter(type: string): Formatter {
+     return (formatters[type] ?? formatters.plain)();
+   }
+   ```
 
 ### Best Practices
 
-1. **Immutability**: Use `readonly` arrays and objects, never mutate
-2. **Composition**: Build complex operations by composing simple functions
-3. **Type Safety**: Use TypeScript strict mode, avoid `any`
-4. **Pure Functions**: Same input → same output, no side effects
-5. **Early Returns**: Flatten conditionals with guard clauses
-6. **Lookup Objects**: Replace switch statements with record lookups
-7. **Point-Free Style**: Use currying for composable utilities
+1. **Keep Functions Small and Focused** - A function should do one thing
+2. **Use TypeScript Strictly** - Enable strict mode, avoid `any`, define clear types
+3. **Immutability Preferred** - Don't mutate inputs; return new values instead
+4. **Meaningful Names** - Variables and functions should describe their purpose
+5. **Consistency** - Follow existing patterns in the codebase
 
-### Testing
+### Error Handling
 
-Test the functional code:
-
-```typescript
-import { test, expect } from "bun:test";
-import { isOk, isErr } from "./utils/result";
-
-test("operation should return ok on success", async () => {
-  const result = await operation();
-  expect(isOk(result)).toBe(true);
-  if (isOk(result)) {
-    expect(result.value).toBe(expected);
-  }
-});
-
-test("operation should return err on failure", async () => {
-  const result = await operationWithError();
-  expect(isErr(result)).toBe(true);
-  if (isErr(result)) {
-    expect(result.error.message).toContain("error");
-  }
-});
-```
+- **Don't write defensive code** - Let errors bubble up to appropriate boundaries
+- **Catch at boundaries** - CLI entry points, API handlers, or top-level operations
+- **Fail fast** - Throw when something is wrong, don't return null/optional everywhere
+- **Provide meaningful messages** - Error messages should explain what went wrong
+- **Exit appropriately** - CLI commands should exit with code 1 on failure
 
 ## License
 
