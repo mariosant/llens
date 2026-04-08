@@ -1,0 +1,22 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          { "path": "dist/llens-linux-x64", "label": "Linux x64" },
+          { "path": "dist/llens-linux-arm64", "label": "Linux ARM64" },
+          { "path": "dist/llens-darwin-x64", "label": "macOS x64" },
+          { "path": "dist/llens-darwin-arm64", "label": "macOS ARM64" },
+          { "path": "dist/llens-windows-x64.exe", "label": "Windows x64" }
+        ]
+      }
+    ],
+    "@semantic-release/git"
+  ]
+}
