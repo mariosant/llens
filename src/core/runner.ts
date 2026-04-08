@@ -96,6 +96,7 @@ const runTestFile = async (
   const mocha = new Mocha({
     reporter: "spec",
     timeout: config.timeout,
+    bail: config.failFast,
     ...mochaOptions,
   });
 
@@ -144,6 +145,7 @@ const runTestFiles = async (
   const mocha = new Mocha({
     reporter: "spec",
     timeout: config.timeout,
+    bail: config.failFast,
     ...mochaOptions,
   });
 

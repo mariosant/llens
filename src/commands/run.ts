@@ -12,6 +12,7 @@ interface RunArgs {
   readonly model?: string;
   readonly timeout?: string;
   readonly reporter?: string;
+  readonly "fail-fast"?: boolean;
 }
 
 const parseCliOverrides = (args: RunArgs): Partial<RuntimeConfig> => {
@@ -20,6 +21,7 @@ const parseCliOverrides = (args: RunArgs): Partial<RuntimeConfig> => {
   if (args.model) Object.assign(overrides, { model: args.model });
   if (args.timeout)
     Object.assign(overrides, { timeout: parseInt(args.timeout, 10) });
+  if (args["fail-fast"]) Object.assign(overrides, { failFast: true });
 
   return overrides;
 };
@@ -83,6 +85,11 @@ export default defineCommand({
       type: "string",
       description: "Mocha reporter to use",
       default: "spec",
+    },
+    "fail-fast": {
+      type: "boolean",
+      description: "Stop running tests on first failure",
+      alias: "bail",
     },
   },
   async run({ args }) {

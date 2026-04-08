@@ -9,19 +9,21 @@ export const DEFAULT_CONFIG: RuntimeConfig = {
   timeout: 30000,
   apiKey: "",
   baseUrl: "https://api.openai.com/v1",
+  failFast: false,
 };
 
 // Environment variable config loader
 const ENV_MAPPINGS: readonly {
   readonly env: string;
   readonly key: keyof RuntimeConfig;
-  readonly transform?: (v: string) => string | number;
+  readonly transform?: (v: string) => string | number | boolean;
 }[] = [
   { env: "LLENS_MODEL", key: "model" },
   { env: "LLENS_API_KEY", key: "apiKey" },
   { env: "LLENS_BASE_URL", key: "baseUrl" },
   { env: "LLENS_TEMPERATURE", key: "temperature", transform: parseFloat },
   { env: "LLENS_TIMEOUT", key: "timeout", transform: (v) => parseInt(v, 10) },
+  { env: "LLENS_FAIL_FAST", key: "failFast", transform: (v) => v === "true" },
 ];
 
 export const loadFromEnv = (): Partial<RuntimeConfig> =>

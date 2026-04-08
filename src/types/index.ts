@@ -94,6 +94,7 @@ export const ConfigFileSchema = z.object({
   timeout: z.number().optional(),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
+  failFast: z.boolean().optional(),
 });
 
 // Inferred types
@@ -117,6 +118,7 @@ export interface RuntimeConfig {
   readonly apiKey: string;
   readonly baseUrl: string;
   readonly response_format?: Record<string, unknown>;
+  readonly failFast: boolean;
 }
 
 // LLM message format (OpenAI-compatible)
