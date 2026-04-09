@@ -74,12 +74,13 @@ jobs:
             base="${dir%/}"
             if [[ "$base" == llens-* ]]; then
               platform="${base#llens-}"
-              if [[ "$base" != "llens-${platform}" ]]; then
-                mv "${dir}"* "llens-${platform}"
+              nested="${base}/${base}"
+              if [[ -d "$nested" ]]; then
+                mv "$nested"/* "$dir" 2>/dev/null || true
+                rmdir "$nested" 2>/dev/null || true
               fi
             fi
           done
-          rm -rf */ || true
           ls -la
 
       - name: Setup Node.js for semantic-release
