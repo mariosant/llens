@@ -71,7 +71,9 @@ jobs:
             base="${dir%/}"
             if [[ "$base" == llens-* ]]; then
               platform="${base#llens-}"
-              mv "${dir}"* "llens-${platform}"
+              if [[ "$base" != "llens-${platform}" ]]; then
+                mv "${dir}"* "llens-${platform}"
+              fi
             fi
           done
           rm -rf */ || true
