@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/mariosant/llens/compare/v1.0.0...v1.0.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* rewrite flatten script to properly handle nested artifact directories ([51221ad](https://github.com/mariosant/llens/commit/51221ad95d83f91b7a5f6717c6498fb372752a11))
+
 # 1.0.0 (2026-04-09)
 
 
