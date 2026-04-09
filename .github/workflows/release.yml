@@ -46,6 +46,9 @@ jobs:
   release:
     needs: build-binary
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
 
     steps:
       - name: Checkout code
@@ -80,7 +83,7 @@ jobs:
           ls -la
 
       - name: Setup Node.js for semantic-release
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
 
