@@ -1,5 +1,14 @@
 # llens
 
+```
+_ _
+| | |
+| | | ___ _ __  ___
+| | |/ _ \ '_ \/ __|
+| | |  __/ | | \__ \
+|_|_|\___|_| |_|___/
+```
+
 LLM Quality Assurance Test Runner - Test your LLM prompts and validate responses with assertions.
 
 ## Overview
@@ -13,6 +22,28 @@ llens is a CLI tool for testing LLM (Large Language Model) outputs against defin
 
 ## Installation
 
+### Pre-built Binary (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/mariosant/llens/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -fsSL https://github.com/mariosant/llens/releases/latest/download/llens-macos-arm64 -o /usr/local/bin/llens
+chmod +x /usr/local/bin/llens
+
+# macOS (Intel)
+curl -fsSL https://github.com/mariosant/llens/releases/latest/download/llens-macos-x64 -o /usr/local/bin/llens
+chmod +x /usr/local/bin/llens
+
+# Linux
+curl -fsSL https://github.com/mariosant/llens/releases/latest/download/llens-linux-x64 -o /usr/local/bin/llens
+chmod +x /usr/local/bin/llens
+```
+
+### From Source
+
+Requires [Bun](https://bun.sh/):
+
 ```bash
 bun install
 ```
@@ -22,7 +53,7 @@ bun install
 ### 1. Create a test file
 
 ```bash
-bun run src/cli.ts init my-test
+llens init my-test
 ```
 
 This creates `my-test.llens.yml` with sample tests.
@@ -36,7 +67,7 @@ export LLENS_API_KEY=your-openai-api-key
 ### 3. Run tests
 
 ```bash
-bun run src/cli.ts run my-test.llens.yml
+llens run my-test.llens.yml
 ```
 
 ## Configuration
