@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/mariosant/llens/compare/v1.0.1...v1.1.0) (2026-04-15)
+
+
+### Features
+
+* add provider-specific API keys and new assertion types ([28e0bd9](https://github.com/mariosant/llens/commit/28e0bd9ddb397029b99e7faa12bebf3dc9d0f2e1))
+
 ## [1.0.1](https://github.com/mariosant/llens/compare/v1.0.0...v1.0.1) (2026-04-09)
 
 
