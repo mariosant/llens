@@ -24,6 +24,17 @@ export type AppError = LLMError | ParseError | ConfigError;
 // Async result alias
 export type AsyncResult<T, E = AppError> = Promise<Result<T, E>>;
 
+// Provider types
+export const LLMProviderSchema = z.enum(["openai", "anthropic", "google"]);
+export type LLMProvider = z.infer<typeof LLMProviderSchema>;
+
+// Provider API keys map
+export interface ProviderAPIKeys {
+  readonly openai?: string;
+  readonly anthropic?: string;
+  readonly google?: string;
+}
+
 // Assertion schemas
 export const ContainsAssertionSchema = z.object({
   type: z.literal("contains"),
@@ -55,6 +66,26 @@ export const LatencyAssertionSchema = z.object({
   maxMs: z.number(),
 });
 
+export const LanguageAssertionSchema = z.union([
+  z.object({
+    type: z.literal("language"),
+    code: z.string(),
+  }),
+  z.object({
+    type: z.literal("language"),
+    anyOf: z.array(z.string()),
+  }),
+  z.object({
+    type: z.literal("language"),
+    not: z.array(z.string()),
+  }),
+]);
+
+export const ToxicityAssertionSchema = z.object({
+  type: z.literal("toxicity"),
+  threshold: z.number().min(0).max(1),
+});
+
 export const AssertionSchema = z.union([
   ContainsAssertionSchema,
   MatchesAssertionSchema,
@@ -62,10 +93,13 @@ export const AssertionSchema = z.union([
   SchemaAssertionSchema,
   CostAssertionSchema,
   LatencyAssertionSchema,
+  LanguageAssertionSchema,
+  ToxicityAssertionSchema,
 ]);
 
 // Test config schema
 export const TestConfigSchema = z.object({
+  provider: LLMProviderSchema.optional(),
   model: z.string().optional(),
   temperature: z.number().optional(),
   timeout: z.number().optional(),
@@ -80,6 +114,11 @@ export const TestSchema = z.object({
   expect: z.array(AssertionSchema),
 });
 
+// Provider config (for nested config structure)
+export const ProviderConfigSchema = z.object({
+  apiKey: z.string(),
+});
+
 // Full test file schema
 export const TestFileSchema = z.object({
   name: z.string().optional(),
@@ -87,13 +126,23 @@ export const TestFileSchema = z.object({
   tests: z.array(TestSchema),
 });
 
-// Config file schema
+// Config file schema (nested providers structure)
 export const ConfigFileSchema = z.object({
-  model: z.string().optional(),
-  temperature: z.number().optional(),
-  timeout: z.number().optional(),
-  apiKey: z.string().optional(),
-  baseUrl: z.string().optional(),
+  defaults: z
+    .object({
+      provider: LLMProviderSchema.optional(),
+      model: z.string().optional(),
+      temperature: z.number().optional(),
+      timeout: z.number().optional(),
+    })
+    .optional(),
+  providers: z
+    .object({
+      openai: ProviderConfigSchema.optional(),
+      anthropic: ProviderConfigSchema.optional(),
+      google: ProviderConfigSchema.optional(),
+    })
+    .optional(),
   failFast: z.boolean().optional(),
 });
 
@@ -104,20 +153,22 @@ export type JsonAssertion = z.infer<typeof JsonAssertionSchema>;
 export type SchemaAssertion = z.infer<typeof SchemaAssertionSchema>;
 export type CostAssertion = z.infer<typeof CostAssertionSchema>;
 export type LatencyAssertion = z.infer<typeof LatencyAssertionSchema>;
+export type LanguageAssertion = z.infer<typeof LanguageAssertionSchema>;
+export type ToxicityAssertion = z.infer<typeof ToxicityAssertionSchema>;
 export type Assertion = z.infer<typeof AssertionSchema>;
 export type TestConfig = z.infer<typeof TestConfigSchema>;
 export type Test = z.infer<typeof TestSchema>;
 export type TestFile = z.infer<typeof TestFileSchema>;
 export type ConfigFile = z.infer<typeof ConfigFileSchema>;
+export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 
 // Runtime config (merged from all sources)
 export interface RuntimeConfig {
+  readonly provider: LLMProvider;
   readonly model: string;
   readonly temperature: number;
   readonly timeout: number;
-  readonly apiKey: string;
-  readonly baseUrl: string;
-  readonly response_format?: Record<string, unknown>;
+  readonly apiKeys: ProviderAPIKeys;
   readonly failFast: boolean;
 }
 
@@ -129,10 +180,10 @@ export interface LLMMessage {
 
 // LLM request format
 export interface LLMRequest {
+  readonly provider: LLMProvider;
   readonly model: string;
   readonly messages: LLMMessage[];
   readonly temperature?: number;
-  readonly response_format?: Record<string, unknown>;
 }
 
 // LLM response format

@@ -1,5 +1,5 @@
 import Mocha, { type MochaOptions, type Runner } from "mocha";
-import { createLLMClient } from "./llm-client";
+import { createLLMClient, createModel } from "./llm-client";
 import { evaluateAllAssertions } from "./assertions";
 import { mergeTestConfig } from "./config";
 import type {
@@ -64,6 +64,7 @@ const executeTest = async (
 ): Promise<TestResult> => {
   const testConfig = mergeTestConfig(config, test.config);
   const client = createLLMClient(testConfig);
+  const model = createModel(testConfig);
 
   const startTime = Date.now();
   const response = await client.complete(test.query);
@@ -73,10 +74,11 @@ const executeTest = async (
     return createErrorResult(test.name, duration, response.error.message);
   }
 
-  const assertionResult = evaluateAllAssertions(
+  const assertionResult = await evaluateAllAssertions(
     response.value,
     test.expect,
     duration,
+    model ?? undefined,
   );
 
   if (assertionResult.pass) {

@@ -3,12 +3,13 @@ import { glob } from "../utils/glob";
 import { parseFile } from "../utils/parser";
 import { loadConfig } from "../core/config";
 import { runTestFile } from "../core/runner";
-import { TestFileSchema } from "../types";
+import { TestFileSchema, LLMProviderSchema } from "../types";
 import { ok, err, type Result } from "../utils/result";
-import type { RuntimeConfig, TestFile, TestStats } from "../types";
+import type { RuntimeConfig, TestFile, TestStats, LLMProvider } from "../types";
 
 interface RunArgs {
   readonly files?: string;
+  readonly provider?: string;
   readonly model?: string;
   readonly timeout?: string;
   readonly reporter?: string;
@@ -18,6 +19,12 @@ interface RunArgs {
 const parseCliOverrides = (args: RunArgs): Partial<RuntimeConfig> => {
   const overrides: Partial<RuntimeConfig> = {};
 
+  if (args.provider) {
+    const parsed = LLMProviderSchema.safeParse(args.provider);
+    if (parsed.success) {
+      Object.assign(overrides, { provider: parsed.data });
+    }
+  }
   if (args.model) Object.assign(overrides, { model: args.model });
   if (args.timeout)
     Object.assign(overrides, { timeout: parseInt(args.timeout, 10) });
@@ -73,6 +80,10 @@ export default defineCommand({
       description: "Test files to run (supports glob patterns)",
       required: false,
     },
+    provider: {
+      type: "string",
+      description: "Provider to use (openai, anthropic, google)",
+    },
     model: {
       type: "string",
       description: "Model to use",
@@ -105,9 +116,9 @@ export default defineCommand({
 
     const config = configResult.value;
 
-    if (!config.apiKey) {
+    if (!config.apiKeys[config.provider]) {
       console.error(
-        "Error: No API key provided. Set LLENS_API_KEY environment variable or add apiKey to config.",
+        `Error: No API key provided for provider "${config.provider}". Set ${config.provider.toUpperCase()}_API_KEY environment variable or add apiKey to config.`,
       );
       process.exit(1);
     }

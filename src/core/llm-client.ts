@@ -1,111 +1,106 @@
-import { ok, err, tryAsync, type Result } from "../utils/result";
-import type { RuntimeConfig, LLMResponse, LLMError } from "../types";
+import { generateText, type LanguageModel } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { ok, err, type Result } from "../utils/result";
+import type {
+  RuntimeConfig,
+  LLMResponse,
+  LLMError,
+  LLMProvider,
+} from "../types";
+import { getProviderAPIKey } from "./config";
 
-// LLM API response types
-interface LLMAPIResponse {
-  readonly choices?: ReadonlyArray<{
-    readonly message?: { readonly content?: string };
-  }>;
-  readonly usage?: {
-    readonly prompt_tokens: number;
-    readonly completion_tokens: number;
-    readonly total_tokens: number;
-  };
-}
+const getModel = (
+  provider: LLMProvider,
+  model: string,
+  apiKey: string,
+): LanguageModel => {
+  switch (provider) {
+    case "openai": {
+      const openai = createOpenAI({ apiKey });
+      return openai(model);
+    }
+    case "anthropic": {
+      const anthropic = createAnthropic({ apiKey });
+      return anthropic(model);
+    }
+    case "google": {
+      const google = createGoogleGenerativeAI({ apiKey });
+      return google(model);
+    }
+  }
+};
 
-interface LLMAPIError {
-  readonly error?: { readonly message?: string };
-}
+export const createModel = (config: RuntimeConfig): LanguageModel | null => {
+  const apiKey = getProviderAPIKey(config, config.provider);
+  if (!apiKey) {
+    return null;
+  }
+  return getModel(config.provider, config.model, apiKey);
+};
 
-// Build request body from config and query
-const buildRequestBody = (
-  config: RuntimeConfig,
-  query: string,
-): Record<string, unknown> => ({
-  model: config.model,
-  messages: [
-    { role: "system", content: "You are a helpful assistant." },
-    { role: "user", content: query },
-  ],
-  temperature: config.temperature,
-  ...(config.response_format && { response_format: config.response_format }),
-});
-
-// Parse API response into LLMResponse
-const parseResponse = (data: LLMAPIResponse): Result<LLMResponse, LLMError> => {
-  const choices = data.choices;
-
-  if (!choices || choices.length === 0) {
+const parseResponse = (
+  content: string,
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  },
+): Result<LLMResponse, LLMError> => {
+  if (!content) {
     return err({ kind: "llm_error", message: "No response from LLM" });
   }
 
-  const message = choices[0]?.message;
-
-  if (!message) {
-    return err({ kind: "llm_error", message: "No message in LLM response" });
-  }
-
   return ok({
-    content: message.content || "",
-    usage: data.usage,
+    content,
+    usage: usage
+      ? {
+          prompt_tokens: usage.promptTokens ?? 0,
+          completion_tokens: usage.completionTokens ?? 0,
+          total_tokens: usage.totalTokens ?? 0,
+        }
+      : undefined,
   });
 };
 
-// Handle HTTP error responses
-const handleHttpError = async (response: Response): Promise<LLMError> => {
-  const data = (await response.json().catch(() => ({}))) as LLMAPIError;
-  return {
-    kind: "llm_error",
-    message: data.error?.message || `HTTP error ${response.status}`,
-    status: response.status,
-  };
-};
-
-// Make API call and handle response
 const callLLM = async (
   config: RuntimeConfig,
   query: string,
 ): Promise<Result<LLMResponse, LLMError>> => {
-  const url = `${config.baseUrl}/chat/completions`;
-  const body = buildRequestBody(config, query);
+  const apiKey = getProviderAPIKey(config, config.provider);
 
-  const responseResult = await tryAsync(() =>
-    fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    }),
-  );
-
-  if (responseResult.kind === "err") {
-    return err({ kind: "llm_error", message: responseResult.error.message });
+  if (!apiKey) {
+    return err({
+      kind: "llm_error",
+      message: `No API key provided for provider: ${config.provider}`,
+    });
   }
 
-  const response = responseResult.value;
+  try {
+    const model = getModel(config.provider, config.model, apiKey);
 
-  if (!response.ok) {
-    return err(await handleHttpError(response));
+    const { text, usage, finishReason } = await generateText({
+      model,
+      prompt: query,
+      temperature: config.temperature,
+    });
+
+    if (finishReason === "error") {
+      return err({ kind: "llm_error", message: "LLM returned an error" });
+    }
+
+    return parseResponse(text, usage);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown LLM error";
+    return err({ kind: "llm_error", message });
   }
-
-  const dataResult = await tryAsync(
-    () => response.json() as Promise<LLMAPIResponse>,
-  );
-
-  if (dataResult.kind === "err") {
-    return err({ kind: "llm_error", message: dataResult.error.message });
-  }
-
-  return parseResponse(dataResult.value);
 };
 
-// Factory function for LLM client (replaces class)
 export const createLLMClient = (config: RuntimeConfig) => ({
   complete: (query: string): Promise<Result<LLMResponse, LLMError>> =>
     callLLM(config, query),
 });
 
-// Type export for the client
 export type LLMClient = ReturnType<typeof createLLMClient>;

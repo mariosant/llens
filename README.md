@@ -201,6 +201,33 @@ Check response time:
   maxMs: 5000
 ```
 
+### language
+
+Check if response is in a specific language (uses [franc](https://github.com/wooorm/franc) for detection with ISO 639-3 language codes):
+
+```yaml
+# Exact language match
+- type: language
+  code: "eng"
+
+# Match any of multiple languages
+- type: language
+  anyOf: ["eng", "spa", "fra"]
+
+# Exclude specific languages
+- type: language
+  not: ["rus", "zho"]
+```
+
+### toxicity
+
+Check if response contains toxic content using AI-based detection (uses the Vercel AI SDK):
+
+```yaml
+- type: toxicity
+  threshold: 0.3
+```
+
 ## CLI Commands
 
 ### run (default)

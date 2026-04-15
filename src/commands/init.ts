@@ -3,7 +3,9 @@ import { ok, err, type Result } from "../utils/result";
 
 const SAMPLE_TEST = `# LLM Quality Test Suite
 name: "My First Test Suite"
-config:
+
+defaults:
+  provider: openai
   model: gpt-4
   temperature: 0.7
   timeout: 30000
@@ -35,19 +37,27 @@ tests:
           required:
             - name
             - age
+
+  - name: "Anthropic Test"
+    query: "Explain quantum physics in one sentence"
+    config:
+      provider: anthropic
+      model: claude-3-5-sonnet-latest
+    expect:
+      - type: contains
+        value: "quantum"
+      - type: latency
+        maxMs: 10000
 `;
 
-// Filename helper - adds extension if missing
 const ensureExtension = (name: string): string =>
   name.endsWith(".llens.yml") ? name : `${name}.llens.yml`;
 
-// File existence check
 const checkFileExists = async (filename: string): Promise<boolean> => {
   const file = Bun.file(filename);
   return file.exists();
 };
 
-// Write file operation
 const writeFile = async (
   filename: string,
   content: string,
@@ -60,7 +70,6 @@ const writeFile = async (
   }
 };
 
-// Main init logic
 const initTestFile = async (name: string): Promise<Result<void, string>> => {
   const filename = ensureExtension(name);
 

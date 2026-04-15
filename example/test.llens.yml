@@ -1,9 +1,23 @@
+# test.llens.yml
+# Example test file demonstrating multi-provider support
+#
+# Config merging order (highest to lowest):
+# 1. Test-level config (this file)
+# 2. Config file (llens.config.yml)
+# 3. Environment variables (LLENS_*)
+# 4. Hard defaults
+
 name: "My First Test Suite"
-config:
+
+# These defaults are inherited by all tests unless overridden
+defaults:
+  provider: openai
+  model: gpt-4
   temperature: 0.7
   timeout: 30000
 
 tests:
+  # Test 1: Uses all defaults from config
   - name: "Capital of France"
     query: "What is the capital of France?"
     expect:
@@ -12,9 +26,11 @@ tests:
       - type: matches
         pattern: "capital.*France"
 
+  # Test 2: Overrides model but uses same provider
   - name: "JSON Response Test"
     query: 'Return a JSON object with fields "name" and "age"'
     config:
+      model: gpt-4o
       response_format:
         type: json_object
     expect:
@@ -30,3 +46,16 @@ tests:
           required:
             - name
             - age
+
+  # Test 3: Uses different provider (Anthropic)
+  # API key comes from config file, not specified here
+  - name: "Anthropic Test"
+    query: "Explain quantum physics in one sentence"
+    config:
+      provider: anthropic
+      model: claude-3-5-sonnet-latest
+    expect:
+      - type: contains
+        value: "quantum"
+      - type: latency
+        maxMs: 10000

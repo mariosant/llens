@@ -5,8 +5,8 @@
 **llens** is an LLM Quality Assurance Test Runner built with [Bun](https://bun.sh/) and [Mocha](https://mochajs.org/). It allows you to:
 
 - Write declarative test files in YAML/JSON/TOML/JSON5
-- Test LLM responses against assertions (content, JSON, schema, cost, latency)
-- Run tests against OpenAI-compatible APIs via a CLI tool
+- Test LLM responses against assertions (content, JSON, schema, cost, latency, toxicity)
+- Run tests against multiple LLM providers (OpenAI, Anthropic, Google) via a CLI tool
 - Validate test file syntax without execution
 
 The project is a CLI application with a modular architecture using TypeScript and Zod for runtime validation.
@@ -25,7 +25,7 @@ src/
 ├── core/               # Core testing logic
 │   ├── assertions.ts   # Assertion evaluation engine
 │   ├── config.ts       # Configuration loading & merging
-│   ├── llm-client.ts   # OpenAI-compatible API client
+│   ├── llm-client.ts   # Vercel AI SDK-based multi-provider client
 │   └── runner.ts       # Test execution orchestrator (Mocha-based)
 ├── types/              # TypeScript types & Zod schemas
 │   └── index.ts
@@ -66,30 +66,32 @@ Key functions:
 The runner uses Mocha's programmatic API to execute LLM tests:
 
 - Merges config for each test
-- Creates LLM client instances
+- Creates LLM client instances with provider-specific settings
 - Runs tests via Mocha's battle-tested runner
 - Uses Mocha reporters for output
 
 #### LLM Client (`src/core/llm-client.ts`)
 
-OpenAI-compatible API client:
+Multi-provider LLM client using [Vercel AI SDK](https://sdk.vercel.ai/):
 
-- Sends chat completion requests
-- Supports `response_format` for JSON mode
+- Supports OpenAI, Anthropic, and Google Generative AI providers
+- Uses `generateText` for model interactions
 - Returns content + token usage
 
 #### Assertions (`src/core/assertions.ts`)
 
-Six assertion types supported:
+Eight assertion types supported:
 
-| Assertion  | Description                          | Parameters           |
-| ---------- | ------------------------------------ | -------------------- |
-| `contains` | Check if response contains substring | `value: string`      |
-| `matches`  | Regex pattern matching               | `pattern: string`    |
-| `json`     | Validate response is valid JSON      | none                 |
-| `schema`   | Validate JSON against Zod schema     | `schema: object`     |
-| `cost`     | Check token usage limits             | `maxTokens?: number` |
-| `latency`  | Check response time                  | `maxMs: number`      |
+| Assertion  | Description                          | Parameters                            |
+| ---------- | ------------------------------------ | ------------------------------------- |
+| `contains` | Check if response contains substring | `value: string`                       |
+| `matches`  | Regex pattern matching               | `pattern: string`                     |
+| `json`     | Validate response is valid JSON      | none                                  |
+| `schema`   | Validate JSON against Zod schema     | `schema: object`                      |
+| `cost`     | Check token usage limits             | `maxTokens?: number`                  |
+| `latency`  | Check response time                  | `maxMs: number`                       |
+| `language` | Detect/validate response language    | `code?: string, anyOf?: [], not?: []` |
+| `toxicity` | AI-based toxicity detection          | `threshold: number` (0-1)             |
 
 #### Parser (`src/utils/parser.ts`)
 
@@ -107,14 +109,24 @@ All types are defined in `src/types/index.ts` using Zod schemas for runtime vali
 Key types:
 
 ```typescript
+// LLM Provider
+type LLMProvider = "openai" | "anthropic" | "google";
+
+// Provider API keys map
+interface ProviderAPIKeys {
+  openai?: string;
+  anthropic?: string;
+  google?: string;
+}
+
 // Runtime configuration (fully resolved)
 interface RuntimeConfig {
+  provider: LLMProvider;
   model: string;
   temperature: number;
   timeout: number;
-  apiKey: string;
-  baseUrl: string;
-  response_format?: Record<string, unknown>;
+  apiKeys: ProviderAPIKeys;
+  failFast: boolean;
 }
 
 // Individual test case
@@ -123,6 +135,15 @@ interface Test {
   query: string;
   config?: TestConfig;
   expect: Assertion[];
+}
+
+// Test config (per-test overrides)
+interface TestConfig {
+  provider?: LLMProvider;
+  model?: string;
+  temperature?: number;
+  timeout?: number;
+  response_format?: Record<string, unknown>;
 }
 
 // Test result
@@ -180,6 +201,10 @@ bun run test:watch
 
 **Runtime:**
 
+- `ai` - Vercel AI SDK core
+- `@ai-sdk/openai` - OpenAI provider
+- `@ai-sdk/anthropic` - Anthropic provider
+- `@ai-sdk/google` - Google Generative AI provider
 - `c12` - Smart configuration loader
 - `citty` - CLI framework for building commands
 - `confbox` - Multi-format config file parser (YAML, JSON, TOML)
@@ -199,11 +224,19 @@ bun run test:watch
 
 ### Environment Variables
 
-- `LLENS_API_KEY` - API key for LLM provider (required)
-- `LLENS_MODEL` - Default model (default: "gpt-4")
-- `LLENS_BASE_URL` - API base URL (default: "https://api.openai.com/v1")
+Provider-specific API keys (use the standard env var for each provider):
+
+- `OPENAI_API_KEY` - OpenAI API key
+- `ANTHROPIC_API_KEY` - Anthropic API key
+- `GOOGLE_API_KEY` - Google API key
+
+Global configuration:
+
+- `LLENS_PROVIDER` - Default provider (openai/anthropic/google) - **Required**
+- `LLENS_MODEL` - Default model
 - `LLENS_TEMPERATURE` - Temperature setting (default: 0.7)
 - `LLENS_TIMEOUT` - Request timeout in ms (default: 30000)
+- `LLENS_FAIL_FAST` - Stop on first failure (default: false)
 
 Bun automatically loads `.env` files, so you can use a `.env` file in the project root.
 
@@ -318,16 +351,19 @@ c12 searches for configuration files in the following order:
 
 1. `llens.config.yml` / `llens.config.yaml` / `llens.config.json` / `llens.config.toml`
 2. `.llensrc.yml` / `.llensrc.yaml` / `.llensrc.json` / `.llensrc.toml`
-3. Environment variables (LLENS\_\*)
+3. Environment variables (LLENS\_\* and provider API keys)
 4. Default values
 
 ### Environment Variables
 
-- `LLENS_API_KEY` - API key for LLM provider (required)
-- `LLENS_MODEL` - Default model (default: "gpt-4")
-- `LLENS_BASE_URL` - API base URL (default: "https://api.openai.com/v1")
-- `LLENS_TEMPERATURE` - Temperature setting (default: 0.7)
-- `LLENS_TIMEOUT` - Request timeout in ms (default: 30000)
+- `OPENAI_API_KEY` - OpenAI API key
+- `ANTHROPIC_API_KEY` - Anthropic API key
+- `GOOGLE_API_KEY` - Google API key
+- `LLENS_PROVIDER` - Default provider (openai/anthropic/google)
+- `LLENS_MODEL` - Default model
+- `LLENS_TEMPERATURE` - Temperature setting
+- `LLENS_TIMEOUT` - Request timeout in ms
+- `LLENS_FAIL_FAST` - Stop on first failure
 
 c12 also supports loading `.env` files automatically.
 
@@ -337,18 +373,54 @@ Test files use `.llens.{yml,yaml,json,toml,json5}` extension.
 
 ```yaml
 name: "Test Suite Name"
-config:
+
+defaults:
+  provider: openai
   model: gpt-4
   temperature: 0.7
 
+providers:
+  openai:
+    apiKey: ${OPENAI_API_KEY}
+  anthropic:
+    apiKey: ${ANTHROPIC_API_KEY}
+
 tests:
-  - name: "Test Name"
+  - name: "Test with defaults"
     query: "Prompt to LLM"
-    config: # Optional per-test config
-      model: gpt-3.5-turbo
     expect:
       - type: contains
         value: "expected text"
+
+  - name: "Test with custom provider"
+    query: "Prompt to Anthropic"
+    config:
+      provider: anthropic
+      model: claude-3-5-sonnet-latest
+    expect:
+      - type: contains
+        value: "response"
+```
+
+### Config File Format
+
+LLens uses a nested config structure with explicit provider support:
+
+```yaml
+# llens.config.yml
+defaults:
+  provider: openai # Required - must be explicitly set
+  model: gpt-4
+  temperature: 0.7
+  timeout: 30000
+
+providers:
+  openai:
+    apiKey: ${OPENAI_API_KEY}
+  anthropic:
+    apiKey: ${ANTHROPIC_API_KEY}
+
+failFast: false
 ```
 
 ## CLI Usage
@@ -369,6 +441,7 @@ llens validate [files]
 
 ### Options
 
+- `--provider <provider>` - Override provider (openai, anthropic, google)
 - `--model <model>` - Override model
 - `--timeout <ms>` - Override timeout in milliseconds
 - `[files]` - Glob pattern for test files (default: `**/*.llens.{yml,yaml,json,toml,json5}`)
@@ -385,8 +458,8 @@ llens run my-test.llens.yml
 # Run tests with glob pattern
 llens run "tests/**/*.llens.yml"
 
-# Override config
-llens run --model gpt-4 --timeout 60000
+# Override provider and model
+llens run --provider anthropic --model claude-3-5-sonnet-latest
 
 # Create sample test
 llens init my-suite
@@ -431,6 +504,14 @@ function evaluateCustom(
 3. Add case to `evaluateAssertion()` switch statement.
 
 4. Add tests in `src/core/assertions.test.ts`.
+
+### Adding a New Provider
+
+1. Install the provider's AI SDK package (e.g., `@ai-sdk/provider-name`)
+2. Add the provider to `LLMProviderSchema` in `src/types/index.ts`
+3. Update `getModel()` in `src/core/llm-client.ts` to handle the new provider
+4. Add the provider API key env var loading in `src/core/config.ts`
+5. Update tests and documentation
 
 ### Adding a New Reporter
 
@@ -517,8 +598,8 @@ const testFile = TestFileSchema.parse(parsed);
 import { loadConfig } from "./core/config";
 
 const config = await loadConfig(process.cwd(), {
-  model: "gpt-4",
-  timeout: 60000,
+  provider: "anthropic",
+  model: "claude-3-5-sonnet-latest",
 });
 ```
 
@@ -536,10 +617,11 @@ const stats = await runTestFile(config, testFile, filePath, {
 
 ### Common Issues
 
-1. **API Key not found**: Set `LLENS_API_KEY` environment variable
-2. **Test file not found**: Check glob pattern and file extension
-3. **Parse errors**: Validate YAML/JSON syntax
-4. **Type errors**: Run `bun test` to catch TypeScript issues
+1. **API Key not found**: Set provider-specific API key environment variable (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+2. **Provider not set**: Set LLENS_PROVIDER environment variable (must be explicitly set)
+3. **Test file not found**: Check glob pattern and file extension
+4. **Parse errors**: Validate YAML/JSON syntax
+5. **Type errors**: Run `bun test` to catch TypeScript issues
 
 ### Debug Tools
 

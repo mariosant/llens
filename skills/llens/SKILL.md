@@ -1,6 +1,6 @@
 ---
 name: llens
-description: Use when creating, updating, or configuring LLM quality assurance tests with llens. Covers .llens.yml/.llens.json test files, all assertion types (contains, matches, json, schema, cost, latency), configuration files, and test execution. Essential for validating LLM outputs.
+description: Use when creating, updating, or configuring LLM quality assurance tests with llens. Covers .llens.yml/.llens.json test files, all assertion types (contains, matches, json, schema, cost, latency, toxicity, language), configuration files, and test execution. Essential for validating LLM outputs.
 license: MIT
 metadata:
   author: github.com/mariosant
@@ -26,7 +26,7 @@ Use this skill when the user:
 LLens is an LLM Quality Assurance Test Runner that allows you to:
 
 - Write declarative test files in YAML, JSON, TOML, or JSON5
-- Test LLM responses against assertions (content, JSON, schema, cost, latency)
+- Test LLM responses against assertions (content, JSON, schema, cost, latency, toxicity, language)
 - Run tests against OpenAI-compatible APIs
 - Validate test file syntax without execution
 
@@ -103,7 +103,7 @@ tests:
 
 ## Assertion Types
 
-LLens supports 6 assertion types. See [references/assertions.md](references/assertions.md) for detailed documentation with examples.
+LLens supports 8 assertion types. See [references/assertions.md](references/assertions.md) for detailed documentation with examples.
 
 | Type       | Purpose                     | Key Parameters                             |
 | ---------- | --------------------------- | ------------------------------------------ |
@@ -113,6 +113,8 @@ LLens supports 6 assertion types. See [references/assertions.md](references/asse
 | `schema`   | Validate against Zod schema | `schema: object`                           |
 | `cost`     | Check token usage           | `maxTokens?: number`                       |
 | `latency`  | Check response time         | `maxMs: number`                            |
+| `toxicity` | AI-based toxicity detection | `threshold: number` (0-1)                  |
+| `language` | Detect/validate language    | `code?: string, anyOf?: [], not?: []`      |
 
 ### Assertion Examples
 
@@ -169,6 +171,14 @@ expect:
 expect:
   - type: latency
     maxMs: 5000
+```
+
+**Toxicity (AI-based content safety):**
+
+```yaml
+expect:
+  - type: toxicity
+    threshold: 0.3
 ```
 
 ## Configuration System

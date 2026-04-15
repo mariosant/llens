@@ -1,0 +1,29 @@
+# llens.config.yml
+# Configuration file for llens test runner
+# Search order: llens.config.yml > .llensrc.yml > env vars
+
+defaults:
+  # Required - must be explicitly set
+  provider: openai
+  # Model for the default provider
+  model: gpt-4
+  # Temperature setting (0.0 - 2.0)
+  temperature: 0.7
+  # Request timeout in milliseconds
+  timeout: 30000
+
+# Provider-specific configuration
+# API keys are loaded from environment variables OR specified here
+providers:
+  openai:
+    # Key from OPENAI_API_KEY env var
+    apiKey: ${OPENAI_API_KEY}
+  anthropic:
+    # Key from ANTHROPIC_API_KEY env var
+    apiKey: ${ANTHROPIC_API_KEY}
+  google:
+    # Key from GOOGLE_API_KEY env var
+    apiKey: ${GOOGLE_API_KEY}
+
+# Stop running tests on first failure
+failFast: false
